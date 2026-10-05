@@ -169,7 +169,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   background: var(--panel-2); color: var(--text-mute);
 }
 .tabs button.on .badge { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.pane { display: none; }
+.pane { display: none; position: relative; }
 .pane.on { display: block; }
 
 /* ---------- 文本区 ---------- */
@@ -178,8 +178,23 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   font-family: var(--mono); line-height: 1.8; color: var(--text);
   background: transparent; border: none; outline: none; resize: vertical;
   white-space: pre-wrap; word-break: break-word;
+  user-select: text; -webkit-user-select: text; cursor: text;
 }
 .out:empty::before { content: attr(data-ph); color: var(--text-mute); }
+
+/* 只读文本区的悬浮操作条 */
+.out-bar {
+  position: absolute; top: 8px; right: 12px; display: flex; gap: 6px;
+  opacity: 0; transition: opacity .18s ease; z-index: 3;
+}
+.pane:hover .out-bar { opacity: 1; }
+.out-bar button {
+  padding: 4px 10px; font-size: 11.5px; border-radius: 7px;
+  background: var(--panel); color: var(--text-dim);
+  border: 1px solid var(--border); backdrop-filter: blur(6px);
+}
+.out-bar button:hover { color: var(--accent); border-color: var(--accent); }
+.out-bar button.ok { color: #10b981; border-color: #10b981; }
 
 /* ---------- 图文对照 ---------- */
 .viewer-bar {
@@ -346,7 +361,7 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
           </div>
           <button id="run"><span>开始识别</span></button>
           <div class="btn-line">
-            <button id="copyBtn">复制文本</button>
+            <button id="copyBtn">复制识别文本</button>
             <button id="dlBtn">导出 JSON</button>
             <button id="mdBtn">导出 MD</button>
           </div>
@@ -373,11 +388,16 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
         <div class="note hide" id="note"><span id="noteTx"></span><span class="x" id="noteX">✕</span></div>
 
         <div class="pane on" id="p-text">
-          <div class="out" id="oText" contenteditable spellcheck="false"
-               data-ph="识别结果会显示在这里，可直接编辑。"></div>
+          <div class="out-bar">
+            <button id="copyText">复制全文</button>
+          </div>
+          <div class="out" id="oText" data-ph="识别结果会显示在这里。"></div>
         </div>
 
         <div class="pane" id="p-md">
+          <div class="out-bar">
+            <button id="copyMd">复制全文</button>
+          </div>
           <div class="out" id="oMd" data-ph="Markdown 预览"></div>
         </div>
 
@@ -780,11 +800,37 @@ $("zRst").onclick = fitWidth;
 addEventListener("resize", () => { if (zoom < 1) fitWidth(); });
 
 /* ---------- 工具 ---------- */
-$("copyBtn").onclick = async () => {
-  const t = $("oText").textContent;
-  try { await navigator.clipboard.writeText(t); note("已复制到剪贴板", "warn"); }
-  catch { note("复制失败，请手动选中复制", "err"); }
-};
+
+/* 复制：优先 Clipboard API，失败时回退到隐藏 textarea + execCommand */
+async function copyText(text, btn) {
+  if (!text) { note("暂无内容可复制", "warn"); return; }
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    ta.remove();
+  }
+  note(ok ? `已复制 ${text.length} 个字符到剪贴板` : "复制失败，请手动选中复制",
+       ok ? "warn" : "err");
+  if (ok && btn) {
+    const old = btn.textContent;
+    btn.textContent = "已复制";
+    btn.classList.add("ok");
+    setTimeout(() => { btn.textContent = old; btn.classList.remove("ok"); }, 1400);
+  }
+}
+
+$("copyText").onclick = e => copyText($("oText").textContent, e.currentTarget);
+$("copyMd").onclick = e => copyText($("oMd").textContent, e.currentTarget);
+$("copyBtn").onclick = e => copyText($("oText").textContent, e.currentTarget);
+
 $("dlBtn").onclick = () => save(
   (file?.name || "result").replace(/\.[^.]+$/, "") + ".json",
   JSON.stringify(result, null, 2), "application/json");
