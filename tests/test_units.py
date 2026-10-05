@@ -4,6 +4,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Windows 控制台默认cp1252/cp936，无法编码中文断言名，会在 print 处抛
+# UnicodeEncodeError。强制切到 UTF-8 并对无法编码的字符降级而不是崩溃。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 import numpy as np
 
 import noocr.engine.imageops as iops
