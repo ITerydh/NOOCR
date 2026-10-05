@@ -33,7 +33,14 @@ venv/
 env/
 ENV/
 noocr-env/
+noocr-gpu/
 .python-version
+
+# GPU 运行库（CUDA / cuDNN 体积巨大，按 README 自行安装）
+_cudnn/
+cudnn/
+*.dll
+bin/
 
 # 测试与缓存
 .pytest_cache/
@@ -71,3 +78,5 @@ desktop.ini
 !.env.example
 *.pem
 *.key
+# 性能脚本的输出
+_bench_*.json

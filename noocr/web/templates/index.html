@@ -62,6 +62,16 @@ header .spacer { margin-left: auto; }
 .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
+/* 设备徽标：GPU 生效时点亮，降级到 CPU 时转为中性色 */
+.pill.dev { font-family: var(--mono); letter-spacing: .2px; }
+.pill.dev.gpu {
+  color: #10b981;
+  border-color: color-mix(in srgb, #10b981 45%, transparent);
+  background: color-mix(in srgb, #10b981 12%, transparent);
+}
+.pill.dev.cpu { color: var(--text-mute); }
+.pill.dev.err { color: #ef4444; border-color: #ef4444; }
+
 /* ---------- 布局 ---------- */
 .wrap { max-width: 1560px; margin: 0 auto; padding: 20px 24px 40px; }
 .grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; }
@@ -312,6 +322,7 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
 <header>
   <div class="logo"><b>NOOCR</b><span id="ver">·</span></div>
   <div class="spacer"></div>
+  <div class="pill dev" id="devPill" title="推理设备"><span id="devName">·</span></div>
   <div class="pill"><span class="dot" id="dot"></span><span id="status">连接中</span></div>
 </header>
 
@@ -462,9 +473,10 @@ let srcUrl = null, zoom = 1, hoverIdx = -1, selIdx = -1, docId = "";
 
 async function boot() {
   try {
-    const [h, b] = await Promise.all([
+    const [h, b, d] = await Promise.all([
       fetch("/health").then(r => r.json()),
       fetch("/api/backends").then(r => r.json()),
+      fetch("/api/device").then(r => r.json()),
     ]);
     $("ver").textContent = "v" + h.version;
     $("dot").className = "dot on";
@@ -474,11 +486,24 @@ async function boot() {
       return `<option value="${x.name}"${x.default ? " selected" : ""}>` +
         `${x.label || x.name} · ${mb}MB</option>`;
     }).join("");
+    showDevice(d);
   } catch (e) {
     $("status").textContent = "服务未连接";
     note("无法连接后端服务：" + e.message, "err");
   }
   buildSamples();
+}
+
+/* 设备徽标：显示实际生效的设备，而非请求值。
+   请求 cuda 却跑在 CPU 上是最容易被忽略的性能陷阱，必须让用户看见。 */
+function showDevice(d) {
+  const pill = $("devPill");
+  const isErr = /失败/.test(d.label || "");
+  pill.className = "pill dev " + (isErr ? "err" : d.gpu_active ? "gpu" : "cpu");
+  const short = d.kind === "cuda" ? "GPU" : d.kind === "cpu" ? "CPU" : (d.kind || "·");
+  const name = d.name && d.name !== "unknown" ? esc(d.name) : "";
+  $("devName").textContent = short + (name ? " · " + name : "");
+  pill.title = `请求 ${d.prefer}｜实际 ${d.label || short}`;
 }
 
 function buildSamples() {
@@ -604,10 +629,21 @@ function apply(d) {
   $("bText").parentElement.classList.toggle("on", true);
 
   const avg = all.length ? all.reduce((a, l) => a + l.confidence, 0) / all.length : 0;
-  $("stats").innerHTML = [
-    ["后端", d.backend], ["页数", d.page_count], ["文本行", all.length],
+  const st = (pages[0] && pages[0].stages) || null;
+  const det = st ? ((st.det_preprocess || 0) + (st.det_infer || 0) +
+    (st.det_postprocess || 0)) : 0;
+  const cells = [
+    ["后端", d.backend], ["设备", st && st.device ? st.device : "·"],
+    ["页数", d.page_count], ["文本行", all.length],
     ["平均置信", (avg * 100).toFixed(1) + "%", true], ["耗时", d.total_time + "s"],
-  ].map(([k, v, hl]) => `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`).join("");
+  ];
+  if (st) {
+    cells.push(["检测", det.toFixed(0) + "ms"]);
+    cells.push(["识别", (st.rec || 0).toFixed(0) + "ms"]);
+  }
+  $("stats").innerHTML = cells
+    .map(([k, v, hl]) => `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`)
+    .join("");
   $("vStat").textContent = `${d.backend} · ${d.page_count} 页 · ${all.length} 行`;
 
   buildPagePick();

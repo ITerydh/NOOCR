@@ -40,17 +40,27 @@ _SAMPLE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".pdf"}
 
 
 class BackendPool:
-    """按需加载并复用后端实例，模型只常驻一份。"""
+    """按需加载并复用后端实例，模型只常驻一份。
 
-    def __init__(self) -> None:
+    设备（CPU/CUDA）也是实例键的一部分：同一个后端在两种设备上
+    是两套独立的 ONNX session，混用会导致「传了 GPU 却拿到 CPU 模型」。
+    """
+
+    def __init__(self, device: str = "auto") -> None:
         self._lock = threading.Lock()
+        self._device = device or "auto"
         self._instances: Dict[str, Any] = {}
+
+    @property
+    def device(self) -> str:
+        """当前绑定的设备偏好。"""
+        return self._device
 
     def get(self, name: str = DEFAULT_BACKEND) -> Any:
         with self._lock:
             backend = self._instances.get(name)
             if backend is None:
-                backend = get_backend(name)
+                backend = get_backend(name, device=self._device)
                 backend.load()
                 self._instances[name] = backend
             return backend
@@ -150,6 +160,8 @@ def _result_payload(result: Any, boxes: bool) -> Dict[str, Any]:
                 "lines": lines,
                 "processing_time": round(page.processing_time, 3),
                 "has_image": page.image is not None,
+                # 分阶段耗时，用于界面展示慢在哪一步
+                "stages": page.debug.get("stage_ms") if page.debug else None,
             }
         )
     return {
@@ -165,9 +177,14 @@ def _result_payload(result: Any, boxes: bool) -> Dict[str, Any]:
     }
 
 
-def create_app(pool: Optional[BackendPool] = None) -> FastAPI:
-    """构造 FastAPI 应用。"""
-    backend_pool = pool or BackendPool()
+def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> FastAPI:
+    """构造 FastAPI 应用。
+
+    Args:
+        pool: 复用已有后端池。为空时按 ``device`` 新建。
+        device: 设备偏好，见 :func:`run`。
+    """
+    backend_pool = pool or BackendPool(device=device)
     cache = DocCache()
     app = FastAPI(
         title="NOOCR",
@@ -199,6 +216,28 @@ def create_app(pool: Optional[BackendPool] = None) -> FastAPI:
             "items": list_backends(),
             "loaded": sorted(backend_pool._instances),
         }
+
+    @app.get("/api/device")
+    def api_device() -> Dict[str, Any]:
+        """返回设备偏好与实际生效的设备。
+
+        前端据此显示「正在用GPU / CPU」——GPU 被静默降级时用户必须看得见。
+        """
+        from ..engine.session import detect_device
+
+        prefer = backend_pool.device
+        info: Dict[str, Any] = {"prefer": prefer, "options": ["auto", "cpu", "cuda"]}
+        try:
+            dev = detect_device(prefer)
+            info["kind"] = dev.kind
+            info["name"] = dev.name
+            info["label"] = str(dev)
+            info["gpu_active"] = dev.is_gpu
+        except Exception as e:
+            info["kind"] = "cpu"
+            info["label"] = f"探测失败: {e}"
+            info["gpu_active"] = False
+        return info
 
     # ---------------------------------------------------------------- 识别
 
@@ -313,11 +352,22 @@ def run(
     port: int = 8000,
     backend: str = DEFAULT_BACKEND,
     reload: bool = False,
+    device: str = "auto",
 ) -> None:
-    """启动 Web 服务。"""
+    """启动 Web 服务。
+
+    Args:
+        device: ``auto`` / ``cpu`` / ``cuda``。``auto`` 会在有 CUDA 的机器上
+            自动启用 GPU，但**必须真的能用**：缺 CUDA/cuDNN 时会明确报错，
+            而不是悄悄退回 CPU 让人误以为在用显卡。
+    """
     import uvicorn
 
-    pool = BackendPool()
+    from ..engine.session import detect_device
+
+    pool = BackendPool(device=device)
+    dev = detect_device(device)
+    print(f"[device] 请求={device} 实际={dev}", flush=True)
     if backend:
         for name, status in pool.warm([backend]).items():
             msg = f"[warmup] {name} 已就绪" if status == "ok" else f"[warmup] {name} 加载失败: {status}"

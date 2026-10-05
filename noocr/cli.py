@@ -72,10 +72,25 @@ def _run_serve(args) -> int:
         )
         return 5
     try:
-        run(host=args.host, port=args.port, backend=args.backend or "")
+        run(
+            host=args.host,
+            port=args.port,
+            backend=args.backend or "",
+            device=args.device,
+        )
     except KeyboardInterrupt:
         print("\n已停止")
     return 0
+
+
+def _resolve_device(prefer: str) -> str:
+    """把设备偏好解析成实际设备字符串，失败时返回错误摘要。"""
+    try:
+        from .engine.session import detect_device
+
+        return str(detect_device(prefer))
+    except Exception as e:
+        return f"探测失败: {e}"
 
 
 def _run_ocr(args) -> int:
@@ -87,12 +102,19 @@ def _run_ocr(args) -> int:
         print(f"文件不存在: {path}", file=sys.stderr)
         return 1
 
-    backend = get_backend(args.backend, rec_batch_size=args.batch, use_cls=args.use_cls)
+    backend = get_backend(
+        args.backend,
+        rec_batch_size=args.batch,
+        use_cls=args.use_cls,
+        device=args.device,
+    )
     try:
         backend.ensure_loaded()
     except Exception as e:
         print(f"后端 {args.backend or '默认'} 不可用: {e}", file=sys.stderr)
         return 2
+
+    print(f"[device] {args.device}  实际={_resolve_device(args.device)}", flush=True)
 
     try:
         doc = load_document(path)
@@ -188,8 +210,9 @@ def _run_bench(args) -> int:
     if img is None:
         print(f"无法读取: {args.path}", file=sys.stderr)
         return 1
-    b = get_backend(args.backend)
+    b = get_backend(args.backend, device=args.device)
     b.ensure_loaded()
+    print(f"[device] 请求={args.device}  实际={_resolve_device(args.device)}", flush=True)
     img = to_bgr(img)
 
     stages: dict = {}
@@ -250,7 +273,7 @@ class _Args:
     """CLI 参数。刻意不用 argparse——见 :func:`parse_argv` 的说明。"""
 
     __slots__ = ("command", "path", "backend", "output", "format",
-                 "batch", "use_cls", "force_ocr", "get", "host", "port")
+                 "batch", "use_cls", "force_ocr", "get", "host", "port", "device")
 
     def __init__(self) -> None:
         self.command = "ocr"
@@ -264,6 +287,7 @@ class _Args:
         self.get: Optional[str] = None
         self.host = "127.0.0.1"
         self.port = 8000
+        self.device = "auto"
 
 
 def _print_help() -> None:
@@ -286,6 +310,9 @@ def _print_help() -> None:
   -o, --output <路径>   输出文件
   -f, --format <格式>   json（默认）/ text / md
       --batch <n>       识别批大小（不影响结果，仅影响速度）
+  -d, --device <设备>   auto（默认）/ cpu / cuda / dml / cann
+                        auto 会在有 CUDA 时自动用 GPU；缺 CUDA/cuDNN
+                        会明确报错，不会悄悄退回 CPU
       --host <地址>     serve 监听地址，默认 127.0.0.1
       --port <端口>     serve 监听端口，默认 8000
       --no-cls          关闭 180 度纠正
@@ -296,8 +323,9 @@ def _print_help() -> None:
 示例:
   noocr 发票.jpg -b ppocrv6-tiny
   noocr 论文.pdf -o 论文.md -f md
-  noocr serve --port 8080
-  noocr bench 试卷.jpg -b ppocrv6
+  noocr serve --port 8080 --device cuda
+  noocr 发票.jpg -d cuda
+  noocr bench 试卷.jpg -b ppocrv6 -d cuda
 """)
 
 
@@ -335,6 +363,7 @@ def parse_argv(argv: List[str]) -> _Args:
         "-f": "format", "--format": "format",
         "--batch": "batch", "--get": "get",
         "--host": "host", "--port": "port",
+        "-d": "device", "--device": "device",
     }
     positional: List[str] = []
     while i < n:
@@ -376,6 +405,10 @@ def parse_argv(argv: List[str]) -> _Args:
 
     if a.format not in ("json", "text", "md"):
         raise SystemExit(f"noocr: --format 只能是 json/text/md，收到 {a.format!r}")
+    if a.device not in ("auto", "cpu", "cuda", "dml", "cann"):
+        raise SystemExit(
+            f"noocr: --device 只能是 auto/cpu/cuda/dml/cann，收到 {a.device!r}"
+        )
     if positional:
         a.path = positional[0]
     return a

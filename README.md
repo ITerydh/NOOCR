@@ -1,6 +1,6 @@
 # NOOCR
 
-ONNX 全功能 OCR 系统。一个内核，多档后端，CPU 优先。
+ONNX 全功能 OCR 系统。一个内核，多档后端，CPU / GPU 双模。
 
 ```bash
 pip install -r requirements.txt
@@ -9,13 +9,15 @@ python -m noocr 发票.jpg                     # 识别
 python -m noocr serve                        # Web 界面 http://127.0.0.1:8000
 ```
 
+有 NVIDIA 显卡时加 `-d cuda`（或 `serve --device cuda`），端到端快 **20-40 倍**。
+
 ---
 
 ## 特性
 
 | | |
 |---|---|
-| **纯 CPU 推理** | 依赖 onnxruntime，无需显卡 |
+| **CPU / GPU 双模** | 同一份代码，`--device cpu` 或 `--device cuda`，可自动探测 |
 | **三档后端** | PP-OCRv6 tiny（6MB）/ small（32MB，默认）/ v5（22MB） |
 | **多格式输入** | 图片、PDF、Word、Excel、PPT、URL |
 | **结果可复现** | 识别输出与 `rec_batch_size` 无关 |
@@ -42,6 +44,45 @@ pip install "noocr[doc]"    # PDF / Word / Excel / PPT
 pip install "noocr[web]"    # Web 界面与 REST API
 pip install "noocr[gpu]"    # NVIDIA GPU 加速
 ```
+
+## GPU 加速
+
+GPU 上端到端比CPU 快 **20-40 倍**（见下方[性能](#性能)）。
+
+```bash
+pip install "noocr[gpu]"          # 装 onnxruntime-gpu
+python -m noocr 发票.jpg -d cuda
+python -m noocr serve --device cuda
+```
+
+`--device` 可选`auto`（默认，有CUDA 就用）/ `cpu` / `cuda`。
+
+### cuDNN 9 是必需的
+
+ONNX Runtime 1.20+ 的 CUDA EP 依赖 **cuDNN 9**（`cudnn64_9.dll`）。装错版本的表现非常隐蔽：ORT **不报错**，只是把算子悄悄交给 CPU，你会得到纯CPU 的性能却以为在用显卡。
+
+本项目对此做了三重防护：
+
+1. 启动时用微型 ONNX 模型**实测** CUDA EP 能否初始化，而非只看它是否被编译进来；
+2. session 创建后**核对实际生效的 EP**，与请求不符直接报错；
+3. Web 界面顶栏常驻**设备徽标**，GPU 未生效时显示为 CPU。
+
+cuDNN 9 安装（解压后把 `bin` 下的 DLL 放到任一目录并告知项目）：
+
+```bash
+# 从 https://developer.nvidia.com/cudnn-downloads 下载 cuDNN 9 for CUDA 12
+# Windows 需显式登记 DLL 搜索路径，Linux/macOS 直接给权限即可
+set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin
+```
+
+项目会自动在项目根、`noocr-gpu/` 等同级虚拟环境的 `site-packages/cudnn/` 下寻找，无需手动设置。
+
+> **若GPU 环境与 CPU 环境分开建**（推荐，避免 ORT 的 DLL 互相覆盖），把 cuDNN 的 DLL 放到 GPU 环境里：
+> `<gpu-venv>/Lib/site-packages/cudnn/`。
+
+### 一个值得记住的坑
+
+`cudnn_conv_algo_search` **必须设在 provider 级选项里**，写成 `"DEFAULT"` 会让 PP-OCRv6-rec 的 228 个卷积集体退回 CPU 实现，单次推理从 5.9ms 劣化到 90.2ms（15倍）。且provider 级配置**优先级高于** SessionOptions，写错地方会被静默覆盖。本项目已在 `build_providers()` 里固定为 `"EXHAUSTIVE"`。
 
 ## 获取权重
 
@@ -118,12 +159,12 @@ noocr <文件>                     # 打印文本
 noocr <文件> -o out.json        # 结构化 JSON（含坐标与置信度）
 noocr 论文.pdf -o 论文.md -f md  # PDF 转 Markdown
 noocr bench 试卷.jpg             # 分阶段耗时剖析
-noocr backends                # 列出后端
-noocr models                  # 权重状态
-noocr serve --port 8000        # Web 界面 + API
+noocr backends                   # 列出后端
+noocr models                     # 权重状态
+noocr serve --port 8000          # Web 界面 + API
 ```
 
-常用选项：`-b/--backend` 选后端、`-f/--format` 选 `json|text|md`、`--batch` 调批大小、`--no-cls` 关闭 180° 纠正。
+常用选项：`-b/--backend` 选后端、`-f/--format` 选 `json|text|md`、`-d/--device` 选 `auto|cpu|cuda`、`--batch` 调批大小、`--no-cls` 关闭 180° 纠正。
 
 ## 作为库
 
@@ -143,31 +184,64 @@ for line in result.all_lines:
 ```python
 from noocr.backends import get_backend
 
-backend = get_backend("ppocrv6-tiny", rec_batch_size=8)
+backend = get_backend("ppocrv6-tiny", rec_batch_size=8, device="cuda")
 backend.load()
 page = backend.recognize_image(image)      # image 为 BGR ndarray
+print(page.debug["stage_ms"])              # 分阶段耗时，便于定位慢在哪一步
 ```
 
 ## Web 界面与 API
 
 ```bash
-noocr serve --host 0.0.0.0 --port 8000
+noocr serve --host 0.0.0.0 --port 8000 --device cuda
 ```
 
-界面 `http://127.0.0.1:8000/` —— 拖入文件即识别，支持文本 / Markdown / 图文对照 / 明细四个视图。
+界面 `http://127.0.0.1:8000/` —— 拖入文件即识别，文本 / Markdown / 图文对照三视图，图文与明细双列联动。
 接口文档 `http://127.0.0.1:8000/docs`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
 | `GET` | `/api/backends` | 可用后端列表 |
+| `GET` | `/api/device` | 设备偏好与**实际生效**的设备 |
 | `POST` | `/api/ocr` | 上传文件识别（multipart） |
 | `POST` | `/api/ocr/path?path=...` | 识别服务器本地路径 |
+| `GET` | `/api/page/{doc_id}/{i}` | 取第i 页渲染图（多页翻页用） |
 | `POST` | `/api/warmup` | 预加载后端 |
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/ocr \
   -F "file=@发票.jpg" -F "backend=ppocrv6-tiny"
+```
+
+## 性能
+
+RTX 4070 Ti SUPER + ppocrv6-small，同一批示例图取中位数：
+
+| 图片 | 行数 | CPU | GPU | 加速比 |
+|---|---|---|---|---|
+| 票据 | 19 | 15537 ms | **594 ms** | 26x |
+| 银行流水 | 30 | 13040 ms | **577 ms** | 23x |
+| 化验单 | 69 | 10396 ms | **567 ms** | 18x |
+| 身份证 | 11 | 13317 ms | **400 ms** | 33x |
+| 银行网点 | 4 | 9414 ms | **249 ms** | 38x |
+
+GPU 侧首次请求含约 2.4s 的模型加载与 CUDA kernel 编译，之后稳定在 0.25-0.6s。
+
+复现：
+
+```bash
+python scripts/perf/bench_device.py cpu     # CPU 基线
+python scripts/perf/bench_device.py cuda    # GPU 基线
+```
+
+其他工具：
+
+```bash
+python scripts/perf/bench_buckets.py cuda   # 分桶与串行调用次数
+python scripts/perf/ab_tiers.py cuda# 档位数A/B（含输出一致性校验）
+python scripts/perf/ab_cudnn.py             # cuDNN 算法搜索 A/B
+python scripts/perf/prof_rec.py cuda        # ORT profiler 逐算子耗时
 ```
 
 ## 后端对比
@@ -186,7 +260,7 @@ noocr/
 ├─ models.py             权重清单与下载
 ├─ cli.py                命令行
 ├─ engine/               推理引擎
-│  ├─ session.py           session 缓存与设备管理
+│  ├─ session.py           session 缓存、设备探测、GPU 运行库挂载
 │  ├─ imageops.py          图像几何与预处理
 │  └─ base.py              后端抽象
 ├─ backends/             OCR 后端
@@ -203,6 +277,7 @@ noocr/
 tests/                   测试与基准
 scripts/
 ├─ publish_weights.py      权重发布脚本
+├─ perf/                   性能基准与A/B 脚本
 └─ models_repo_card.md     权重仓库模型卡
 ```
 

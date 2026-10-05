@@ -1,16 +1,19 @@
 """统一推理引擎。
 
-全项目唯一的 ONNX Runtime session 构造入口，集中解决三类问题：
+全项目唯一的 ONNX Runtime session 构造入口，集中解决四类问题：
 
 1. **缓存容量失控**：:class:`SessionCache` 提供显式容量上限、LRU 淘汰
    与线程安全，避免多份常驻 session 累积导致 OOM。
-2. **加速后端静默失效**：统一做能力探测与回退，回退行为显式告警。
+2. **加速后端静默失效**：统一做能力探测，回退行为显式报错而非悄悄降级。
 3. **配置漂移**：:func:`_make_session_options` 全局唯一实现。
+4. **GPU 运行库找不到**：:func:`ensure_gpu_runtime` 负责把 cuDNN 等
+   依赖目录挂进 DLL 搜索路径，否则 ORT 会静默退回 CPU。
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -21,6 +24,72 @@ from ..logging_config import get_logger
 
 log = get_logger(__name__)
 
+_DLL_READY = False
+
+#: 探测用微型模型的落盘位置；放在临时目录，避免污染包目录
+_PROBE_MODEL_PATH = Path(tempfile.gettempdir()) / "noocr_cuda_probe.onnx"
+_PROBE_MODEL_CACHE: Dict[str, bytes] = {}
+
+
+def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
+    """把GPU 运行库目录挂进 DLL 搜索路径，返回实际生效的目录。
+
+    ONNX Runtime 的 CUDA EP 依赖 ``cudnn64_9.dll`` 等库。缺失时它**不报错**
+    而是把算子悄悄交给 CPU ��户，表现为"选了 GPU 但没有任何加速"。
+    Windows 还需要 ``os.add_dll_directory`` 显式登记，纯改 ``PATH`` 不够。
+
+    按优先级查找：显式传入的目录 → 环境变量 ``NOOCR_GPU_LIB_DIR``
+    → ``noocr-gpu`` 环境同级或 ``venv`` 同级的 ``cudnn/`` 目录。
+    """
+    global _DLL_READY
+    if _DLL_READY:
+        return []
+    _DLL_READY = True
+
+    candidates: List[Path] = [Path(d) for d in (extra_dirs or []) if d]
+    env = os.environ.get("NOOCR_GPU_LIB_DIR")
+    if env:
+        candidates.extend(Path(p) for p in env.split(os.pathsep) if p)
+
+    # 从本文件向上逐级找，覆盖三种常见摆法：
+    #   <root>/cudnn                —— 直接解压在项目根
+    #   <venv>/Lib/site-packages/cudnn
+    #   <root>/<venv>/Lib/site-packages/cudnn  —— GPU 环境与包目录平级
+    here = Path(__file__).resolve()
+    for base in here.parents:
+        candidates.append(base / "cudnn")
+        for pat in ("*/Lib/site-packages/cudnn", "*/*/site-packages/cudnn"):
+            try:
+                candidates.extend(base.glob(pat))
+            except OSError:
+                continue
+
+    registered: List[str] = []
+    seen: set = set()
+    for path in candidates:
+        try:
+            if not path.is_dir() or path in seen:
+                continue
+            if not any(path.glob("cudnn*.dll")):
+                continue
+            seen.add(path)
+            resolved = str(path.resolve())
+            if resolved in registered:
+                continue
+            if os.name == "nt" and hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(resolved)
+            os.environ["PATH"] = resolved + os.pathsep + os.environ.get("PATH", "")
+            registered.append(resolved)
+        except OSError as e:
+            log.debug("注册 DLL 目录失败 {}: {}", path, e)
+
+    if registered:
+        log.info("已挂载 GPU 运行库: {}", registered)
+    else:
+        log.debug("未找到 cudnn 运行库目录，GPU 加速可能不可用")
+    return registered
+
+
 __all__ = [
     "Device",
     "ModelNotFoundError",
@@ -28,6 +97,7 @@ __all__ = [
     "build_providers",
     "create_session",
     "detect_device",
+    "ensure_gpu_runtime",
     "get_global_cache",
     "warmup",
 ]
@@ -60,7 +130,10 @@ class Device:
         return "cpu"
 
 
-_DEVICE_CACHE: Optional[Device] = None
+#: 设备探测结果缓存。**必须按 (prefer, device_id) 键控**——
+#: 早期版本只存一份，导致先跑``prefer="cpu"`` 的调用把结果钉死，
+#: 后续 ``prefer="cuda"`` 直接复用 CPU，用户永远等不到GPU。
+_DEVICE_CACHE: Dict[Tuple[str, int], Device] = {}
 _DEVICE_LOCK = threading.Lock()
 
 
@@ -85,17 +158,20 @@ def detect_device(prefer: str = "auto", device_id: int = 0, refresh: bool = Fals
     Returns:
         探测到的 :class:`Device`。请求的设备不可用时降级到 CPU 并告警。
     """
-    global _DEVICE_CACHE
+    key = (prefer, device_id)
     with _DEVICE_LOCK:
-        if _DEVICE_CACHE is not None and not refresh and device_id == 0:
-            return _DEVICE_CACHE
+        if not refresh:
+            cached = _DEVICE_CACHE.get(key)
+            if cached is not None:
+                return cached
         result = _detect_device_uncached(prefer, device_id)
-        if device_id == 0:
-            _DEVICE_CACHE = result
+        _DEVICE_CACHE[key] = result
         return result
 
 
 def _detect_device_uncached(prefer: str, device_id: int) -> Device:
+    if prefer in ("auto", "cuda", "dml", "cann"):
+        ensure_gpu_runtime()
     providers = _available_providers()
 
     def cuda_name() -> Tuple[str, int]:
@@ -121,10 +197,18 @@ def _detect_device_uncached(prefer: str, device_id: int) -> Device:
         return "NVIDIA GPU", 0
 
     if prefer in ("auto", "cuda") and "CUDAExecutionProvider" in providers:
-        name, mem = cuda_name()
-        if prefer == "cuda":
-            log.info("使用 CUDA 设备: {}", name)
-        return Device("cuda", device_id, name, mem)
+        if not _cuda_ep_usable(device_id):
+            if prefer == "cuda":
+                log.warning(
+                    "安装了 onnxruntime-gpu 但 CUDA EP 无法初始化"
+                    "（通常是缺少 CUDA/cuDNN 运行库或版本不匹配）。"
+                    "请检查 NOOCR_GPU_LIB_DIR 是否指向 cuDNN 9 的 bin 目录。"
+                )
+        else:
+            name, mem = cuda_name()
+            if prefer == "cuda":
+                log.info("使用 CUDA 设备: {}", name)
+            return Device("cuda", device_id, name, mem)
 
     if prefer in ("auto", "dml") and "DmlExecutionProvider" in providers and os.name == "nt":
         if prefer == "dml":
@@ -144,15 +228,80 @@ def _detect_device_uncached(prefer: str, device_id: int) -> Device:
     return Device("cpu", 0, "CPU", 0)
 
 
+def _cuda_ep_usable(device_id: int) -> bool:
+    """实测 CUDA EP 能否真正初始化，而不是只看它是否被编译进来。
+
+    ``get_available_providers()`` 列出 ``CUDAExecutionProvider`` 只说明
+    打包时包含了它；缺少 CUDA/cuDNN 运行库时，ORT 会在创建 session 时
+    打一条警告然后把算子全部交给 CPU，**不抛异常**。这会让"已启用 GPU"
+    的用户拿到纯CPU 的性能而毫无察觉。
+
+    这里用一个4x4 的最小图建session，代价约1ms，却能提前把假GPU 拦下来。
+    """
+    try:
+        import onnxruntime as ort
+
+        model = _PROBE_MODEL_CACHE.get("probe")
+        if model is None:
+            model = _make_probe_model()
+            _PROBE_MODEL_CACHE["probe"] = model
+        opts = ort.SessionOptions()
+        opts.log_severity_level = 3
+        opts.enable_cpu_mem_arena = False
+        sess = ort.InferenceSession(
+            model, opts, providers=[("CUDAExecutionProvider", {"device_id": device_id})]
+        )
+        try:
+            return "CUDAExecutionProvider" in sess.get_providers()
+        finally:
+            del sess  # 探测会话必须立刻释放，否则会占住显存不退还
+    except Exception as e:
+        log.debug("CUDA EP 不可用: {}", e)
+        return False
+
+
+def _make_probe_model() -> bytes:
+    """生成一个恒等映射的微型 ONNX 模型，用于验证 EP 是否可用。"""
+    import onnx
+    from onnx import TensorProto, helper
+
+    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 1, 4, 4])
+    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 1, 4, 4])
+    node = helper.make_node("Identity", ["x"], ["y"], name="probe")
+    graph = helper.make_graph([node], "probe", [x], [y], [])
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 8
+    onnx.save(model, str(_PROBE_MODEL_PATH), save_as_external_data=False)
+    return _PROBE_MODEL_PATH.read_bytes()
+
+
 def build_providers(device: Device, *, arena: bool = True) -> List[ProviderSpec]:
-    """构造 providers 列表，CPU 永远作为最后兜底。"""
+    """构造 providers 列表，CPU 永远作为最后兜底。
+
+    .. warning:: ``cudnn_conv_algo_search`` 一旦写成 ``"DEFAULT"``，
+       性能会掉一个数量级，且**覆盖** SessionOptions 里的同名配置。
+
+       Provider 级选项的优先级高于 session 级配置，所以这里必须显式给
+       ``"EXHAUSTIVE"``，否则 :func:`_make_session_options` 里设的值会被
+       静默丢弃。实测 PP-OCRv6-rec（bs=6 w=320，RTX 4070 Ti SUPER）：
+
+       ============================  ==========
+       provider 级 algo_search       单次推理
+       ============================  ==========
+       DEFAULT                90.2 ms
+       EXHAUSTIVE                    5.9 ms
+       ============================  ==========
+
+       ``"DEFAULT"`` 走cuDNN 最保守的启发式分支，会让大量卷积退回 CPU
+       实现，ORT 在日志里打印 ``running in Fallback mode`` 警告。
+    """
     if device.kind == "cuda":
         return [
             (
                 "CUDAExecutionProvider",
                 {
                     "device_id": device.device_id,
-                    "cudnn_conv_algo_search": "DEFAULT",
+                    "cudnn_conv_algo_search": "EXHAUSTIVE",
                     "do_copy_in_default_stream": True,
                 },
             ),
@@ -166,7 +315,11 @@ def build_providers(device: Device, *, arena: bool = True) -> List[ProviderSpec]
 
 
 def _make_session_options(
-    *, threads: int = 0, arena: bool = True, dynamic_shape: bool = False
+    *,
+    threads: int = 0,
+    arena: bool = True,
+    dynamic_shape: bool = False,
+    on_gpu: bool = False,
 ):
     """构造 SessionOptions，全局唯一实现。
 
@@ -174,6 +327,7 @@ def _make_session_options(
         threads: CPU 线程数，0 表示交给 ORT 自行决定。
         arena: 是否启用内存 arena。
         dynamic_shape: 模型输入形状是否随运行变化。
+        on_gpu: 是否走 CUDA/DirectML。此处开�� cuDNN 深度卷积搜索。
 
     .. warning:: 动态形状模型必须关闭 arena，否则会出现数量级的性能退化
 
@@ -205,6 +359,13 @@ def _make_session_options(
     else:
         opts.enable_cpu_mem_arena = arena
         opts.enable_mem_pattern = True
+
+    if on_gpu:
+        # 放开 cuDNN 的workspace 上限，给卷积算法穷举足够的试错空间。
+        # 注意：``cudnn_conv_algo_search`` 必须在 :func:`build_providers` 的
+        # provider 级选项里设EXHAUSTIVE——provider 级优先级更高，写在这里
+        # 会被覆盖。
+        opts.add_session_config_entry("ep.cuda.cudnn_conv_use_max_workspace", "1")
 
     if threads and threads > 0:
         opts.intra_op_num_threads = threads
@@ -267,7 +428,12 @@ def create_session(
 
     dev = _coerce_device(device)
     sess_providers = list(providers) if providers is not None else build_providers(dev, arena=arena)
-    opts = _make_session_options(threads=threads, arena=arena, dynamic_shape=dynamic_shape)
+    opts = _make_session_options(
+        threads=threads,
+        arena=arena,
+        dynamic_shape=dynamic_shape,
+        on_gpu=dev.is_gpu,
+    )
 
     t0 = _now()
     try:
@@ -276,15 +442,24 @@ def create_session(
         )
     except Exception as e:
         if dev.is_gpu:
-            log.warning("在 {} 上加载 {} 失败（{}），回退到 CPU 推理", dev, path.name, e)
-            session = ort.InferenceSession(
-                str(path),
-                sess_options=_make_session_options(threads=threads, dynamic_shape=dynamic_shape),
-                providers=["CPUExecutionProvider"],
-            )
-            dev = Device("cpu")
-        else:
-            raise
+            raise RuntimeError(
+                f"在 {dev} 上加载 {path.name} 失败: {e}\n"
+                f"ONNX Runtime 在缺少 CUDA/cuDNN 运行库时会静默回退到 CPU，"
+                f"此时性能与 CPU 相同但用户以为是 GPU。\n"
+                f"请确认已安装 CUDA 12 与 cuDNN 9，并把它们加入 PATH；"
+                f"或改用 CPU: device='cpu'"
+            ) from e
+        raise
+
+    # ORT 即使不抛异常，也可能因缺库把算子全丢给 CPU；必须核对实际生效的 EP
+    actual = set(session.get_providers())
+    wanted = {p if isinstance(p, str) else p[0] for p in sess_providers}
+    if dev.is_gpu and not (actual & wanted):
+        raise RuntimeError(
+            f"{path.name} 请求了 {dev}，但实际只启用了 {sorted(actual)}。"
+            f"通常是缺少 CUDA/cuDNN 运行库（Windows 需把 cudnn64_9.dll 等"
+            f"加入 PATH）。可用 device='cpu' 强制使用 CPU。"
+        )
 
     log.info(
         "已加载模型 {} ({:.2f}s) 设备={} 实际EP={}",
@@ -350,6 +525,9 @@ class SessionCache:
         self._max_size = max(1, max_size)
         self._device = _coerce_device(device) if device is not None else None
         self._threads = threads
+        #:默认 8 而非 4：一个后端要占 det+rec+cls 三个 session，
+        #:同时存在 CPU 与GPU 两套时会达到 6 个，容量 4 会把刚建的挤掉，
+        #:表现为「每次请求都重新加载模型」的诡异卡顿。
         self._store: "OrderedDict[Tuple[str, str], Any]" = OrderedDict()
         self._lock = threading.RLock()
         self._hits = 0
@@ -414,7 +592,7 @@ _GLOBAL_CACHE: Optional[SessionCache] = None
 _GLOBAL_CACHE_LOCK = threading.Lock()
 
 
-def get_global_cache(max_size: int = 4) -> SessionCache:
+def get_global_cache(max_size: int = 8) -> SessionCache:
     """进程级共享 session 缓存。
 
     多后端共存时共享，避免同一模型被重复加载多份（每份数百 MB）。

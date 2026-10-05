@@ -18,6 +18,8 @@ ignore = [
 [lint.per-file-ignores]
 # 测试脚本允许长行与内联打印；按分节逐步 import 是刻意的可读性编排
 "tests/*" = ["E501", "T201", "E402"]
+# 性能分析脚本以 print 输出表格为主，且需在 import 前调整 sys.path
+"scripts/perf/*" = ["E501", "T201", "E402"]
 # __init__.py 只做导出，未使用的导入属正常
 "noocr/**/__init__.py" = ["F401"]
 

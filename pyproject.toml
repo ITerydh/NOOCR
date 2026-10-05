@@ -37,8 +37,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# GPU 加速（onnxruntime-gpu 与 onnxruntime 互斥，需先卸载 CPU 版）
-gpu = ["onnxruntime-gpu>=1.16"]
+# GPU 加速。onnxruntime-gpu 与 onnxruntime **互斥**，装到同一环境会
+# 互相覆盖 DLL。推荐单独建一个环境（如 noocr-gpu），两个环境都可用，
+# 由 --device 决定走哪套。
+#
+# 还需CUDA 12 + **cuDNN 9**（ORT 1.20+ 依赖 cudnn64_9.dll）。缺 cuDNN 时
+# ORT 不报错而是把算子悄悄交给 CPU，表现为「选了 GPU 但没加速」。
+gpu = ["onnxruntime-gpu>=1.20", "onnx>=1.16"]
 
 # PDF / Word / Excel / PPT 输入
 doc = [
