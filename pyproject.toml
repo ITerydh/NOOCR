@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noocr"
+version = "0.1.0"
+description = "ONNX 全功能 OCR 系统：多后端统一、CPU 优先、开箱即用"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "NOOCR Contributors" }]
+keywords = ["ocr", "document-parsing", "onnxruntime", "paddleocr", "text-detection", "text-recognition"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Capture :: Scanners",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python-headless>=4.8",
+    "onnxruntime>=1.16",
+    "pydantic>=2.0",
+    "loguru>=0.7",
+    "pyclipper>=1.3",
+]
+
+[project.optional-dependencies]
+# GPU 加速（onnxruntime-gpu 与 onnxruntime 互斥，需先卸载 CPU 版）
+gpu = ["onnxruntime-gpu>=1.16"]
+
+# PDF / Word / Excel / PPT 输入
+doc = [
+    "pymupdf>=1.23",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6.23",
+    "beautifulsoup4>=4.12",
+]
+
+# Web 界面与 REST API
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+]
+
+# 从 ModelScope 拉取权重
+hub = ["modelscope>=1.20"]
+
+all = ["noocr[doc,web,hub]"]
+
+[project.scripts]
+noocr = "noocr.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ITerydh/NOOCR"
+Repository = "https://github.com/ITerydh/NOOCR"
+Issues = "https://github.com/ITerydh/NOOCR/issues"
+Weights = "https://www.modelscope.cn/models/iterhui/noocr-onnx"
+
+[tool.setuptools.packages.find]
+include = ["noocr*"]
+
+[tool.setuptools.package-data]
+noocr = ["web/templates/*.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",
+    "B008",
+    "SIM108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: 需要下载模型或跑真实推理的慢测试",
+    "gpu: 需要 NVIDIA GPU",
+]
