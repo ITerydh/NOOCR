@@ -134,7 +134,8 @@ check("不存在的文件返回 None", iops.imread(ROOT / "no_such_file_xyz.png"
 print("\n=== _assign_width_buckets（固定档位，保证可复现）===")
 from noocr.backends.ppocr import PPOCRBackend
 
-b = PPOCRBackend(device="cpu", rec_batch_size=6)
+# 该方法是纯函数，不触碰任何权重；绕过 __init__ 以免 CI 缺字典文件时失败
+b = object.__new__(PPOCRBackend)
 ws = [10, 32, 33, 64, 100, 320, 321, 700, 1920, 5000]
 tw = b._assign_width_buckets(ws)
 check("长度一致", len(tw) == len(ws))
