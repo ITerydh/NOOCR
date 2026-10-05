@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
+
 import noocr.engine.imageops as iops
 
 FAILED = []
@@ -80,6 +81,7 @@ check("BR 最大", abs(q[2][0] - 110) < 1e-3 and abs(q[2][1] - 50) < 1e-3, f"{q[
 
 print("\n=== _min_area_quad（postprocess）===")
 from noocr.backends.postprocess import _min_area_quad
+
 ret = _min_area_quad(np.array([[10, 20], [110, 22], [112, 52], [12, 50]], np.float32))
 q1, short_side = ret  # 返回 (四角坐标, 短边长)
 check("返回结构为 (points, short)", isinstance(q1, np.ndarray) and q1.shape == (4, 2),
@@ -131,6 +133,7 @@ check("不存在的文件返回 None", iops.imread(ROOT / "no_such_file_xyz.png"
 
 print("\n=== _assign_width_buckets（固定档位，保证可复现）===")
 from noocr.backends.ppocr import PPOCRBackend
+
 b = PPOCRBackend(device="cpu", rec_batch_size=6)
 ws = [10, 32, 33, 64, 100, 320, 321, 700, 1920, 5000]
 tw = b._assign_width_buckets(ws)

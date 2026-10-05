@@ -79,8 +79,8 @@ def _run_serve(args) -> int:
 
 
 def _run_ocr(args) -> int:
-    from .inputs.loader import load_document
     from .backends import get_backend
+    from .inputs.loader import load_document
 
     path = Path(args.path)
     if not path.exists():
@@ -175,6 +175,7 @@ def _run_ocr(args) -> int:
 
 def _run_bench(args) -> int:
     """把单张图的分阶段耗时打到 stdout。"""
+    from .backends import get_backend
     from .engine.imageops import (
         crop_quad,
         imread,
@@ -182,7 +183,6 @@ def _run_bench(args) -> int:
         sort_reading_order,
         to_bgr,
     )
-    from .backends import get_backend
 
     img = imread(args.path)
     if img is None:
@@ -351,13 +351,13 @@ def parse_argv(argv: List[str]) -> _Args:
             if key == "batch":
                 try:
                     a.batch = max(1, int(val))
-                except ValueError:
-                    raise SystemExit(f"noocr: --batch 需要整数，收到 {val!r}")
+                except ValueError as e:
+                    raise SystemExit(f"noocr: --batch 需要整数，收到 {val!r}") from e
             elif key == "port":
                 try:
                     a.port = int(val)
-                except ValueError:
-                    raise SystemExit(f"noocr: --port 需要整数，收到 {val!r}")
+                except ValueError as e:
+                    raise SystemExit(f"noocr: --port 需要整数，收到 {val!r}") from e
             else:
                 setattr(a, key, val)
             i += 2

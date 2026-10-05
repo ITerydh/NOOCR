@@ -1,0 +1,25 @@
+line-length = 100
+target-version = "py310"
+
+[lint]
+# 只启用有实际价值的规则，不追求"零告警"的数字游戏。
+#
+# 刻意不启用 UP006/UP007/UP045（PEP 585/604 注解现代化）：
+# 本项目统一使用 typing.List / Optional，与团队编码规范一致；
+# 改写成 list / X | None 收益仅是省几个字符，反而增加阅读成本。
+select = ["E", "F", "W", "B", "I", "SIM"]
+ignore = [
+    "E501",    # 行长由 formatter 负责，ruff 报截断反而干扰阅读
+    "SIM108",  # 三元表达式并不总是更易读
+    "B008",    # FastAPI 的 Depends()/File() 就是要在默认值里调用
+    "B905",    # 本项目 zip 两侧本就等长，strict=True 只会把逻辑错误变成运行时异常
+]
+
+[lint.per-file-ignores]
+# 测试脚本允许长行与内联打印；按分节逐步 import 是刻意的可读性编排
+"tests/*" = ["E501", "T201", "E402"]
+# __init__.py 只做导出，未使用的导入属正常
+"noocr/**/__init__.py" = ["F401"]
+
+[lint.isort]
+known-first-party = ["noocr"]

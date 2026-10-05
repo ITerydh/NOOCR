@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 from loguru import logger
 

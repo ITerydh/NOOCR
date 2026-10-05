@@ -1,10 +1,12 @@
 """验证 180 度方向纠正是否真正生效（修复前只记录角度不旋转图像）。"""
-import sys, time
+import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import cv2, numpy as np
+import cv2
+
 from noocr.backends.ppocr import PPOCRBackend
 from noocr.engine.imageops import imread, imwrite
 

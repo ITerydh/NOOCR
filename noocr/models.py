@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List
 
 from .logging_config import get_logger
 

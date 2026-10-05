@@ -4,7 +4,8 @@
 1. 实际识别出的文本是否合理（不是乱码/空白）
 2. 不同 rec_batch_size 下结果是否**完全一致**（可复现性契约）
 """
-import sys, time
+import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

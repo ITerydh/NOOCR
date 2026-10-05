@@ -12,13 +12,14 @@ docx / xlsx / pptx 自带文本层，优先走 :attr:`InputDocument.native_text`
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import tempfile
 import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, List, Optional, Sequence, Union
+from typing import Iterator, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -175,10 +176,8 @@ def _load_bytes(data: bytes, dpi: int, max_pages: int) -> InputDocument:
 
 def _unlink_quiet(path: str) -> None:
     """删除临时文件，失败不影响主流程。"""
-    try:
+    with contextlib.suppress(OSError):
         os.unlink(path)
-    except OSError:
-        pass
 
 
 def _sniff_suffix(data: bytes) -> Optional[str]:

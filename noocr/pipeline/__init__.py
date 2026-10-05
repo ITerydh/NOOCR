@@ -118,7 +118,8 @@ class OCRPipeline:
             self._backend = None
 
     def __enter__(self) -> "OCRPipeline":
-        self.backend
+        # 提前触发加载，失败要在 with 语句内暴露而不是首次 read 时
+        _ = self.backend
         return self
 
     def __exit__(self, *exc: Any) -> None:

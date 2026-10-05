@@ -22,7 +22,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import cv2
 import numpy as np
@@ -120,8 +120,8 @@ def profile_one(backend, image_path: Path, baseline_ms: float, repeat: int) -> D
         crops = [crop_quad(img, b) for b in det_boxes]
         sw.lap("crop")
 
-        # 5) 方向分类
-        angles = backend._classify_angles(crops)
+# 5) 方向分类
+        backend._classify_angles(crops)
         sw.lap("cls")
 
         # 6) 识别预处理（逐条 resize + 归一化）

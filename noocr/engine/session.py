@@ -23,13 +23,13 @@ log = get_logger(__name__)
 
 __all__ = [
     "Device",
-    "ExecutionTarget",
     "ModelNotFoundError",
     "SessionCache",
     "build_providers",
     "create_session",
     "detect_device",
     "get_global_cache",
+    "warmup",
 ]
 
 ProviderSpec = Union[str, Tuple[str, Dict[str, Any]]]

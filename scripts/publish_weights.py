@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from noocr.models import BACKEND_MODELS, MODELSCOPE_REPO, MODELS_ROOT  # noqa: E402
+from noocr.models import BACKEND_MODELS, MODELS_ROOT, MODELSCOPE_REPO  # noqa: E402
 
 
 def main() -> int:
@@ -37,7 +37,7 @@ def main() -> int:
     base = Path(args.base_dir).resolve()
     seen: set[str] = set()
     plan: list[Path] = []
-    for backend, specs in BACKEND_MODELS.items():
+    for specs in BACKEND_MODELS.values():
         for spec in specs:
             rel = spec.rel_path
             if rel in seen:
@@ -60,7 +60,7 @@ def main() -> int:
     from modelscope.hub.api import HubApi
 
     api = HubApi()
-    print(f"\n登录中…")
+    print("\n登录中…")
     api.login(args.token)
     print(f"创建/检查仓库 {args.repo}")
     try:

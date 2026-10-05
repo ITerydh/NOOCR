@@ -14,6 +14,7 @@ import numpy as np
 
 from ..logging_config import get_logger
 from ..types import BackendCapabilities, OCRResult, PageResult
+
 log = get_logger(__name__)
 
 __all__ = ["OCRBackend", "BackendError", "BackendUnavailable"]

@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -163,7 +163,6 @@ def _min_area_quad(contour_or_points) -> Tuple[np.ndarray, float]:
 
     全项目唯一的最小外接矩形实现，避免各调用点在退化四边形上产出重复角点。
     """
-    is_contour = isinstance(contour_or_points, np.ndarray) and contour_or_points.ndim == 3
     rect = cv2.minAreaRect(contour_or_points)
     pts = cv2.boxPoints(rect).astype(np.float32)
 

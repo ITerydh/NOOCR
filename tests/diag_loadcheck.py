@@ -37,7 +37,7 @@ class CpuBaseline:
     def run(self) -> float:
         a = self._a
         t = time.perf_counter()
-        for _ in range(reps):
+        for _ in range(self.reps):
             a = a @ a.T / 64.0
         self._a = a
         return (time.perf_counter() - t) * 1000

@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -27,12 +27,11 @@ from ..engine.base import BackendUnavailable, OCRBackend
 from ..engine.imageops import (
     crop_quad,
     normalize_db,
-    order_quad,
     resize_keep_ratio,
     sort_reading_order,
     to_bgr,
 )
-from ..engine.session import Device, create_session, detect_device, get_global_cache, warmup
+from ..engine.session import detect_device, get_global_cache
 from ..models import model_path
 from ..types import BackendCapabilities, BoundingBox, PageResult, TextLine
 from .decode import CTCDecoder
@@ -229,9 +228,7 @@ class PPOCRBackend(OCRBackend):
 
         # --- 组装 + 过滤 ---
         lines: List[TextLine] = []
-        for i, (box, crop, rec, angle) in enumerate(
-            zip(det_boxes, crops, rec_results, angles)
-        ):
+        for box, rec, angle in zip(det_boxes, crops, rec_results, angles):
             text, score = rec
             if score < self.drop_score:
                 continue
