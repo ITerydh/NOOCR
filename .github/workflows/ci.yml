@@ -33,6 +33,9 @@ jobs:
       - name: 静态检查
         run: ruff check noocr tests scripts
 
+      - name: 多语言 README 一致性
+        run: python scripts/check_readme.py
+
       - name: 单元测试（无需权重）
         run: python tests/test_units.py
 

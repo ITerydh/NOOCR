@@ -1,5 +1,7 @@
 # NOOCR
 
+[简体中文](README.md) | [English](README_EN.md) | [繁體中文](README_TW.md)
+
 ONNX 全功能 OCR 系统。一个内核，多档后端，CPU / GPU 双模。
 
 ```bash
@@ -40,14 +42,14 @@ pip install -r requirements.txt
 
 ### 为什么只有一份依赖
 
-`requirements.txt` 装的是 `onnxruntime-gpu` 而非 `onnxruntime`，因为前者是后者的**超集**——它同时含CPU、CUDA、TensorRT 三个 EP，装一个包就覆盖了两种机器：
+`requirements.txt` 装的是 `onnxruntime-gpu` 而非 `onnxruntime`，因为前者是后者的**超集**——它同时含 CPU、CUDA、TensorRT 三个 EP，装一个包就覆盖了两种机器：
 
 | 包 | 可用 EP | 体积 |
 |---|---|---|
 | `onnxruntime` | CPU | ~15 MB |
 | `onnxruntime-gpu` | CPU / CUDA / TensorRT | ~700 MB |
 
-没有 NVIDIA 显卡的机器装GPU 版**照样能正常安装与运行**，只是GPU 部分永不启用。所以不需要区分「CPU 环境」和「GPU 环境」，也不需要为GPU 重建虚拟环境。
+没有 NVIDIA 显卡的机器装 GPU 版**照样能正常安装与运行**，只是 GPU 部分永不启用。所以不需要区分「CPU 环境」和「GPU 环境」，也不需要为 GPU 重建虚拟环境。
 
 代价是体积。若只跑 CPU 且在意安装速度/磁盘，换一份轻量的：
 
@@ -139,7 +141,7 @@ python -m noocr models --get ppocrv6-small # 32MB，默认
 python -m noocr models --get ppocrv5       # 22MB，上一代
 ```
 
-也可SDK 一次性拉全部：
+也可 SDK 一次性拉全部：
 
 ```bash
 pip install modelscope
@@ -226,7 +228,7 @@ for line in result.all_lines:
 指定后端与参数：
 
 ```python
-# 按次覆盖：这一次用CPU / 换后端，不影响别的调用
+# 按次覆盖：这一次用 CPU / 换后端，不影响别的调用
 r = ocr("扫描件.jpg", device="cpu")        # 强制 CPU
 r = ocr("扫描件.jpg", backend="ppocrv5")   # 临时换后端
 r = ocr("扫描件.jpg", dpi=300, max_pages=5)
@@ -266,7 +268,7 @@ noocr serve --host 0.0.0.0 --port 8000 --device cuda
 | `GET` | `/api/device` | 设备偏好与**实际生效**的设备 |
 | `POST` | `/api/ocr` | 上传文件识别（multipart） |
 | `POST` | `/api/ocr/path?path=...` | 识别服务器本地路径 |
-| `GET` | `/api/page/{doc_id}/{i}` | 取第i 页渲染图（多页翻页用） |
+| `GET` | `/api/page/{doc_id}/{i}` | 取第 i 页渲染图（多页翻页用） |
 | `POST` | `/api/warmup` | 预加载后端 |
 
 ```bash
@@ -299,7 +301,7 @@ python scripts/perf/bench_device.py cuda    # GPU 基线
 
 ```bash
 python scripts/perf/bench_buckets.py cuda   # 分桶与串行调用次数
-python scripts/perf/ab_tiers.py cuda# 档位数A/B（含输出一致性校验）
+python scripts/perf/ab_tiers.py cuda        # 档位数 A/B（含输出一致性校验）
 python scripts/perf/ab_cudnn.py             # cuDNN 算法搜索 A/B
 python scripts/perf/prof_rec.py cuda        # ORT profiler 逐算子耗时
 ```
@@ -337,7 +339,7 @@ noocr/
 tests/                   测试与基准
 scripts/
 ├─ publish_weights.py      权重发布脚本
-├─ perf/                   性能基准与A/B 脚本
+├─ perf/                   性能基准与 A/B 脚本
 └─ models_repo_card.md     权重仓库模型卡
 ```
 
