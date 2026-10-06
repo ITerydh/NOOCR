@@ -157,65 +157,125 @@ body {
 }
 
 /* ---------- 顶栏 ---------- */
+/* 两段式：左侧品牌、右侧工具组。工具组内控件共享外框并以细分隔线
+   划分——原先三个控件各自独立胶囊，高 30/28px、圆角各异、
+   内边距各异，堆在一起松散且不成体系。 */
 header {
-  display: flex; align-items: center; gap: 14px;
-  padding: 0 24px; height: 56px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; height: 56px;
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 20;
 }
-.logo { display: flex; align-items: baseline; gap: 8px; }
-.logo b { font-size: 16px; font-weight: 700; letter-spacing: .4px; }
-.logo span { font-size: 11px; color: var(--text-mute); font-family: var(--mono); }
 header .spacer { margin-left: auto; }
-.pill {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--text-dim);
-  padding: 4px 10px; border-radius: 20px;
-  background: var(--panel-2); border: 1px solid var(--border);
+
+/* 品牌区：图标 + 名称 + 版本，纵向基线对齐 */
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand .mark { display: flex; flex: none; }
+.brand .mark svg { display: block; border-radius: 8px; }
+.brand .name { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.brand .name b {
+  font-size: 15.5px; font-weight: 700; letter-spacing: .5px;
+  color: var(--text); line-height: 1;
 }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-mute); }
+.brand .name i {
+  font-style: normal; font-size: 11.5px; color: var(--text-mute);
+  line-height: 1; white-space: nowrap;
+}
+.brand .ver {
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-mute);
+  padding: 2px 6px; border-radius: var(--r-full);
+  background: var(--panel-2); border: 1px solid var(--border);
+  line-height: 1; flex: none;
+}
+
+/* 工具组：单一外框承载设备 / 状态 / 主题 */
+.tools {
+  display: flex; align-items: stretch; flex: none;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: visible;
+}
+.tsep { width: 1px; background: var(--border); flex: none; }
+
+.tool {
+  display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 11px; flex: none;
+  font-size: 12px; font-family: inherit; line-height: 1;
+  color: var(--text-dim); background: none; border: none;
+  border-radius: 0; cursor: default;
+  transition: color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+/* 圆角只加在外侧两角，与外框贴合；内侧面保持方角，
+   靠分隔线划分——逐个控件都做成胶囊会在接缝处露出底色缺口 */
+.tools > .tool:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+.tools > .tool:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; }
+.tool.sq { width: 34px; padding: 0; justify-content: center; font-size: 13.5px; cursor: pointer; }
+button.tool { cursor: pointer; }
+button.tool:hover { color: var(--accent); background: var(--accent-subtle); }
+button.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.tool .ic {
+  width: 14px; height: 14px; flex: none;
+  opacity: .72;
+}
+.tool .ic.caret { width: 11px; height: 11px; opacity: .5; margin-left: -2px; }
+/* 主题图标由 CSS 按当前主题显隐，不再用 JS 改 textContent——
+   两个字符图标（☀/☾）字形随系统字体变化，粗细与品牌区的
+   矢量图标对不上，且切换时会有一次文本重排的抖动。
+   默认（无 data-theme，即跟随系统深色）亮月亮；显式 light 亮太阳。
+   两条规则都必须写全：只写 light 那条的话，从 light 切到 dark 时
+   太阳不会被隐藏，两个图标会同时出现。 */
+/* 显隐规则必须与 .tool .ic 同权重或更高——.tool .ic 里的
+   display:block 是 (0,2,0)，若这里的 display:none 只有 (0,1,0)，
+   会被前者压住，两个图标就一直同时显示。 */
+.tool .ico-moon { display: block; }
+.tool .ico-sun { display: none; }
+[data-theme="light"] .tool .ico-sun { display: block; }
+[data-theme="light"] .tool .ico-moon { display: none; }
+
+/* 状态点：外圈用内阴影，避免撑大控件尺寸引起基线跳动 */
+.dot {
+  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--text-mute);
+}
 .dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
 .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
-/* 图标按钮：正方形、无边框，用于顶栏次要动作 */
-.iconbtn {
-  width: 30px; height: 30px; padding: 0; flex: none;
-  border-radius: var(--r-sm); border: 1px solid var(--border);
-  background: var(--panel-2); color: var(--text-dim); font-size: 13px;
-}
-.iconbtn:hover:not(:disabled) {
-  background: var(--panel); color: var(--accent); border-color: var(--accent);
-}
-
 /* 设备徽标：GPU 生效时点亮，降级到 CPU 时转为中性色。
    颜色全部走 token —— 此前硬编码 #10b981，在亮色近白底上只有
    2.9:1，且与 --ok 不是同一个颜色 */
-.pill.dev { font-family: var(--mono); letter-spacing: .2px; }
-.pill.dev.gpu {
+.tool.dev { font-family: var(--mono); letter-spacing: .2px; }
+/* 显卡全名可能长达30+ 字符（「NVIDIA GeForce RTX 4070 Ti SUPER」），
+   顶栏是横向 flex，不限制就会把品牌区挤走。这里给出上限并省略，
+   完整型号仍在 title 与下拉里可见。 */
+#devName {
+  max-width: 190px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tool.dev.gpu {
   color: var(--ok);
-  border-color: var(--ok-border);
   background: var(--ok-subtle);
 }
-.pill.dev.cpu { color: var(--text-mute); }
-.pill.dev.err {
-  color: var(--err); border-color: var(--err-border);
-  background: var(--err-subtle);
+.tool.dev.cpu { color: var(--text-mute); }
+.tool.dev.err {
+  color: var(--err); background: var(--err-subtle);
 }
-.pill.dev { cursor: pointer; user-select: none; transition: border-color .15s ease; }
-.pill.dev:hover { border-color: var(--accent); color: var(--accent); }
-.pill.dev.busy { opacity: .55; pointer-events: none; }
-.pill.dev .caret { font-size: 9px; opacity: .6; margin-left: 1px; }
+.tool.dev:hover { border-radius: 0; }
+.tool.dev.busy { opacity: .55; pointer-events: none; }
 
 /* 设备下拉：挂在徽标下方，点击外部关闭 */
-.devwrap { position: relative; display: flex; }
+/* devwrap 是工具组的 flex 子项，stretch 下已与组等高；
+   显式声明只为让下拉的 top:100% 有确定的参照 */
+.devwrap { position: relative; display: flex; align-self: stretch; }
+/* 下拉挂在工具组内部，必须避让工具组自身的边框，
+   否则会与外框描边重叠、看起来像多了一条线 */
 .devpop {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
-  min-width: 232px; padding: 5px; border-radius: 10px;
-  background: var(--panel); border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+  position: absolute; top: calc(100% + 7px); right: 0; z-index: 40;
+  min-width: 240px; max-width: 340px; padding: 5px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  box-shadow: var(--sh-3);
 }
 .devpop button {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
@@ -240,6 +300,12 @@ header .spacer { margin-left: auto; }
   margin-top: 2px; line-height: 1.45; white-space: normal;
 }
 .devpop .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+/* 自动检测落到 CPU 时的原因说明。走提示色而非正文色：
+   它是「需要用户做点什么」的信息，不是一句装饰性备注 */
+.devpop .note {
+  padding: 6px 10px 8px; font-size: 10.5px; color: var(--warn);
+  line-height: 1.5; white-space: normal;
+}
 .devpop .hd {
   padding: 5px 10px 4px; font-size: 10.5px; color: var(--text-mute);
   letter-spacing: .4px;
@@ -324,9 +390,16 @@ header .spacer { margin-left: auto; }
   .wrap { padding: 12px 12px 20px; gap: 12px; }
   header { padding: 0 12px; gap: 8px; }
   .samples { grid-template-columns: repeat(3, 1fr); }
+  /* 窄屏优先保住品牌名与工具组：设备后缀与副标题先让位 */
+  .brand .name i { display: none; }
+  .brand .ver { display: none; }
 }
 @media (max-width: 460px) {
   .samples { grid-template-columns: repeat(2, 1fr); }
+  /* 极窄屏优先保住「当前跑在 CPU 还是 GPU」这个关键信息。
+     用 clip 而非 display:none 隐藏设备后缀——后者会连GPU 字样
+     一起藏掉，用户就完全看不出跑在什么设备上了。 */
+  .tool.dev #devName { max-width: 42px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .btn-line { flex-wrap: wrap; }
 }
 
@@ -753,17 +826,60 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
 </head>
 <body>
 <header>
-  <div class="logo"><b>NOOCR</b><span id="ver">·</span></div>
-  <div class="spacer"></div>
-  <div class="devwrap">
-    <div class="pill dev" id="devPill" title="点击切换推理设备" role="button" tabindex="0"
-         aria-haspopup="true" aria-expanded="false">
-      <span id="devName">·</span><span class="caret">▾</span>
-    </div>
-    <div class="devpop hide" id="devPop"></div>
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="32" height="32">
+        <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#lg)"/>
+        <path d="M7 11h4M12.5 11h4M18 11h7M7 16h3.5M12 16h4.5M18 16h7M7 21h4.5M13 21h4M18.5 21h6.5"
+              stroke="#fff" stroke-width="2.3" stroke-linecap="round"/>
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="32" y2="32">
+            <stop offset="0" stop-color="#4a86f7"/><stop offset="1" stop-color="#2f56c4"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </span>
+    <span class="name"><b>NOOCR</b><i>文字识别</i></span>
+    <span class="ver" id="ver">·</span>
   </div>
-  <div class="pill"><span class="dot" id="dot"></span><span id="status">连接中</span></div>
-  <button class="iconbtn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
+  <div class="spacer"></div>
+  <!-- 右侧控件统一为一个「工具组」：设备、状态、主题并排，
+       共享外框与分隔线。此前三个控件各自为独立胶囊，
+       高度、圆角、内边距各不相同，视觉上散乱且不像一个整体。 -->
+  <div class="tools">
+    <div class="devwrap">
+      <button class="tool dev" id="devPill" title="点击切换推理设备" aria-haspopup="true" aria-expanded="false">
+        <svg class="ic" viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="4.6" y="4.6" width="6.8" height="6.8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M6.6 1.9v2.1M9.4 1.9v2.1M6.6 12v2.1M9.4 12v2.1M1.9 6.6h2.1M1.9 9.4h2.1M12 6.6h2.1M12 9.4h2.1"
+                stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span id="devName">·</span>
+        <svg class="ic caret" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4.4 6.4 8 10l3.6-3.6" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="devpop hide" id="devPop"></div>
+    </div>
+    <span class="tsep" aria-hidden="true"></span>
+    <div class="tool stat" role="status" aria-live="polite">
+      <span class="dot" id="dot"></span><span id="status">连接中</span>
+    </div>
+    <span class="tsep" aria-hidden="true"></span>
+    <button class="tool sq" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题">
+      <svg class="ic ico-sun" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"
+              stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <svg class="ic ico-moon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M13.4 9.6A5.9 5.9 0 0 1 6.4 2.6a5.9 5.9 0 1 0 7 7z"
+              fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
 </header>
 
 <div class="wrap">
@@ -995,9 +1111,16 @@ function showDevice(d) {
   devInfo = d;
   const pill = $("devPill");
   const isErr = !d.usable;
-  pill.className = "pill dev " + (isErr ? "err" : d.gpu_active ? "gpu" : "cpu");
+  /* 类名必须带 tool——按钮基类负责尺寸与基线对齐，
+     这里只追加状态色。写成 "pill dev" 会丢掉全部新样式。 */
+  pill.className = "tool dev " + (isErr ? "err" : d.gpu_active ? "gpu" : "cpu");
   const short = d.kind === "cuda" ? "GPU" : d.kind === "cpu" ? "CPU" : (d.kind || "·");
-  const name = d.name && d.name !== "unknown" ? esc(d.name) : "";
+  /* name 与短标签同义时不能重复拼——CPU 设备的 name 本身就是
+     "CPU"，无条件拼成 "CPU · CPU" 就是同一行出现两个一样的词。
+     GPU 的 name 是显卡型号，与 "GPU" 不同义，保留可读性更好。 */
+  const raw = (d.name || "").trim();
+  const useless = !raw || raw.toLowerCase() === "unknown";
+  const name = useless || raw.toLowerCase() === short.toLowerCase() ? "" : raw;
   $("devName").textContent = short + (name ? " · " + name : "");
   pill.title = `当前偏好 ${d.prefer}｜实际 ${d.label || short}（点击切换）`;
 }
@@ -1029,7 +1152,8 @@ function renderDevPop() {
       </button>`;
     }).join("") +
     (devInfo ? `<div class="sep"></div>
-      <div class="hd" style="letter-spacing:0">实际：${esc(devInfo.label || devInfo.kind || "—")}</div>` : "");
+      <div class="hd" style="letter-spacing:0">实际：${esc(devInfo.label || devInfo.kind || "—")}</div>` +
+      (devInfo.note ? `<div class="note">${esc(devInfo.note)}</div>` : "") : "");
 }
 
 /* 切换设备。GPU 首次加载要编译 CUDA kernel，约 2-3s，故显示忙态。 */
@@ -1800,7 +1924,8 @@ function applyTheme(t) {
   } else {
     document.documentElement.removeAttribute("data-theme");
   }
-  $("themeBtn").textContent = t === "light" ? "☀" : "☾";
+  /* 只改 title：按钮内是两个 SVG 图标，显隐由 CSS 按 data-theme 决定。
+     早先这里写 textContent（☀ / ☾）会把 SVG 整个抹掉。 */
   $("themeBtn").title = (t === "light" ? "浅色" : "深色") + "主题，点击切换";
   /* canvas 标注色按 CSS 变量取，主题变了必须重绘，否则框还是旧主题的颜色 */
   draw();

@@ -81,6 +81,23 @@ def _probe_device(prefer: str) -> Dict[str, Any]:
             f"本机未检测到可用的 {prefer.upper()} 运行环境"
             "（缺 CUDA/cuDNN 运行库，或装的是纯 CPU 版 onnxruntime）"
         )
+    # auto 落到 CPU 时**不能**算不可用（那会让页面变成报错态），
+    # 但必须说清原因：用户看到灰字 "CPU" 会以为自动检测失灵，
+    # 而真实原因往往是「当前 Python 环境装的是纯 CPU 版 onnxruntime」。
+    elif prefer == "auto" and not dev.is_gpu and not info.get("gpu_available"):
+        providers = ""
+        try:
+            import onnxruntime as ort
+
+            providers = ", ".join(ort.get_available_providers())
+        except Exception:
+            pass
+        info["note"] = (
+            "已自动检测，但未启用 GPU：当前环境无 CUDA/cuDNN。"
+            + (f"onnxruntime 可用后端：{providers}。" if providers else "")
+            + "如需 GPU 加速，请改用 GPU 版环境（onnxruntime-gpu）并配置 "
+            "NOOCR_GPU_LIB_DIR 指向 cuDNN 9 的 bin 目录。"
+        )
     return info
 
 

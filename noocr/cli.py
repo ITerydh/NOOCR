@@ -36,7 +36,7 @@ def _print_backends() -> None:
         print(f"{name:<20}{b.get('notes', ''):<44}{size:8.1f}MB")
     print(
         "\n提示: 极速选 ppocrv6-tiny（0.58x 速度，精度略降）；"
-        "高精度选 ppocrv6；上一代兼容选 ppocrv5。"
+        "高精度选 ppocrv6-small（可简写为 ppocrv6）；上一代兼容选 ppocrv5。"
     )
 
 

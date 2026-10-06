@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ..engine.base import OCRBackend
 
@@ -34,15 +34,24 @@ def _make_ppocrv6_small(**opts) -> OCRBackend:
 
 
 #: 后端名 -> 工厂
+#:
+#: :data:`_ALIASES` 里的名字**不进这张表**。别名与规范名指向同一个
+#: 工厂，若同时登记，:func:`list_backends` 会把同一档位列出两次，
+#: 且两行的 label 完全相同——GUI 的下拉框里就出现两个一样的
+#: "PP-OCRv6 small"，用户会以为是两个不同的模型。
 BACKEND_REGISTRY: Dict[str, Callable[..., OCRBackend]] = {
     "ppocrv5": _make_ppocrv5,
     "ppocrv6-tiny": _make_ppocrv6_tiny,
-    "ppocrv6": _make_ppocrv6_small,
     "ppocrv6-small": _make_ppocrv6_small,
 }
 
 #: 别名 -> 规范名。``ppocrv6`` 与 ``ppocrv6-small`` 是同一档。
 _ALIASES: Dict[str, str] = {"ppocrv6": "ppocrv6-small"}
+
+#: 可传入的名字全集（规范名 + 别名），供报错信息与帮助使用。
+#: 与 :data:`BACKEND_REGISTRY` 分开维护：报错要告诉用户别名可用，
+#: 但列举可选后端时不能把别名混进去。
+_ACCEPTABLE: Tuple[str, ...] = tuple(sorted(set(BACKEND_REGISTRY) | set(_ALIASES)))
 
 #: 各后端的**静态**能力摘要，供 ``list_backends`` 零成本列出。
 #: 不能靠实例化拿到——那会真的加载模型。
@@ -81,7 +90,7 @@ def get_backend(name: Optional[str] = None, **opts) -> OCRBackend:
     factory = BACKEND_REGISTRY.get(key)
     if factory is None:
         raise KeyError(
-            f"未知后端 {key!r}；可用: {', '.join(sorted(BACKEND_REGISTRY))}"
+            f"未知后端 {key!r}；可用: {', '.join(_ACCEPTABLE)}"
         )
     return factory(**opts)
 
