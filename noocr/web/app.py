@@ -79,7 +79,7 @@ def _probe_device(prefer: str) -> Dict[str, Any]:
         info["usable"] = False
         info["reason"] = (
             f"本机未检测到可用的 {prefer.upper()} 运行环境"
-            "（缺 onnxruntime-gpu 或 CUDA/cuDNN 运行库）"
+            "（缺 CUDA/cuDNN 运行库，或装的是纯 CPU 版 onnxruntime）"
         )
     return info
 

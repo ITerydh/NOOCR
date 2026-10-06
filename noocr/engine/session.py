@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import os
-import tempfile
+import sys
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -26,20 +26,30 @@ log = get_logger(__name__)
 
 _DLL_READY = False
 
-#: 探测用微型模型的落盘位置；放在临时目录，避免污染包目录
-_PROBE_MODEL_PATH = Path(tempfile.gettempdir()) / "noocr_cuda_probe.onnx"
+#: 探测用微型模型（protobuf 字节），进程内缓存，避免重复构造
 _PROBE_MODEL_CACHE: Dict[str, bytes] = {}
 
 
 def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
-    """把GPU 运行库目录挂进 DLL 搜索路径，返回实际生效的目录。
+    """把 GPU 运行库目录挂进 DLL 搜索路径，返回实际生效的目录。
 
     ONNX Runtime 的 CUDA EP 依赖 ``cudnn64_9.dll`` 等库。缺失时它**不报错**
-    而是把算子悄悄交给 CPU ��户，表现为"选了 GPU 但没有任何加速"。
+    而是把算子悄悄交给 CPU，用户表现为"选了 GPU 但没有任何加速"。
     Windows 还需要 ``os.add_dll_directory`` 显式登记，纯改 ``PATH`` 不够。
 
-    按优先级查找：显式传入的目录 → 环境变量 ``NOOCR_GPU_LIB_DIR``
-    → ``noocr-gpu`` 环境同级或 ``venv`` 同级的 ``cudnn/`` 目录。
+    查找顺序（先到先用，命中即全部登记）：
+
+    1. 显式传入的目录；
+    2. 环境变量 ``NOOCR_GPU_LIB_DIR``（``os.pathsep`` 分隔，可多个）；
+    3. **系统标准安装位置**——装了 CUDA Toolkit / cuDNN 的机器由此覆盖，
+       不需要用户做任何配置；
+    4. 项目内常见摆法（解压在项目根、装进某个虚拟环境的 site-packages）。
+
+    .. important::
+       找不到时**不报错**。缺 GPU 运行库在无显卡的机器上是常态，
+       报错会让纯 CPU 用户每次启动都看到一串吓人的红字。
+       真正需要提醒的场合由 :func:`_cuda_ep_usable` 负责——它只在
+       用户**明确请求了cuda** 时才发警告。
     """
     global _DLL_READY
     if _DLL_READY:
@@ -51,14 +61,41 @@ def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
     if env:
         candidates.extend(Path(p) for p in env.split(os.pathsep) if p)
 
-    # 从本文件向上逐级找，覆盖三种常见摆法：
-    #   <root>/cudnn                —— 直接解压在项目根
-    #   <venv>/Lib/site-packages/cudnn
-    #   <root>/<venv>/Lib/site-packages/cudnn  —— GPU 环境与包目录平级
+    # 系统标准位置：覆盖 conda / venv / CUDA Toolkit / 手工解压的 cuDNN
+    home = Path.home()
+    candidates.extend(
+        [
+            Path(sys.prefix),  # 当前解释器根（含 Lib/cudnn、bin/cudnn）
+            Path(sys.base_prefix),
+        ]
+    )
+    if os.name == "nt":
+        candidates.extend(
+            [
+                Path(os.environ["CUDA_PATH"]) if os.environ.get("CUDA_PATH") else None,
+                Path(r"C:\Program Files\NVIDIA\CUDNN\v9\bin"),
+                Path(r"C:\ProgramData\NVIDIA\cudnn\v9\bin"),
+                Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin"),
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                Path("/usr/local/cuda/lib64"),
+                Path("/usr/local/cuda/lib"),
+                Path("/usr/lib/x86_64-linux-gnu"),
+                Path("/usr/local/cudnn/lib"),
+                home / ".local" / "lib",
+            ]
+        )
+
+    # 项目内：逐级向上找，覆盖直接解压在根、装进某个虚拟环境两种摆法
     here = Path(__file__).resolve()
-    for base in here.parents:
+    for base in (*here.parents, home):
         candidates.append(base / "cudnn")
-        for pat in ("*/Lib/site-packages/cudnn", "*/*/site-packages/cudnn"):
+        for pat in ("*/Lib/site-packages/cudnn", "*/*/site-packages/cudnn",
+                    "*/lib/python*/site-packages/nvidia/cudnn/lib",
+                    "*/*/site-packages/nvidia/cudnn/lib"):
             try:
                 candidates.extend(base.glob(pat))
             except OSError:
@@ -67,10 +104,12 @@ def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
     registered: List[str] = []
     seen: set = set()
     for path in candidates:
+        if path is None:
+            continue
         try:
             if not path.is_dir() or path in seen:
                 continue
-            if not any(path.glob("cudnn*.dll")):
+            if not any(path.glob("cudnn*.dll")) and not any(path.glob("libcudnn*.so*")):
                 continue
             seen.add(path)
             resolved = str(path.resolve())
@@ -79,6 +118,10 @@ def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
             if os.name == "nt" and hasattr(os, "add_dll_directory"):
                 os.add_dll_directory(resolved)
             os.environ["PATH"] = resolved + os.pathsep + os.environ.get("PATH", "")
+            if os.name != "nt":
+                os.environ["LD_LIBRARY_PATH"] = (
+                    resolved + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+                )
             registered.append(resolved)
         except OSError as e:
             log.debug("注册 DLL 目录失败 {}: {}", path, e)
@@ -86,7 +129,7 @@ def ensure_gpu_runtime(extra_dirs: Optional[Sequence[str]] = None) -> List[str]:
     if registered:
         log.info("已挂载 GPU 运行库: {}", registered)
     else:
-        log.debug("未找到 cudnn 运行库目录，GPU 加速可能不可用")
+        log.debug("未找到 cuDNN 运行库目录，GPU 加速可能不可用")
     return registered
 
 
@@ -197,7 +240,10 @@ def _detect_device_uncached(prefer: str, device_id: int) -> Device:
         return "NVIDIA GPU", 0
 
     if prefer in ("auto", "cuda") and "CUDAExecutionProvider" in providers:
-        if not _cuda_ep_usable(device_id):
+        # None = 造不出探测图（缺 onnx 包），此时相信编译期判断。
+        # 误报「不可用」比漏报更糟：用户会以为机器有问题而放弃 GPU 排查。
+        usable = _cuda_ep_usable(device_id)
+        if usable is False:
             if prefer == "cuda":
                 log.warning(
                     "安装了 onnxruntime-gpu 但 CUDA EP 无法初始化"
@@ -219,24 +265,37 @@ def _detect_device_uncached(prefer: str, device_id: int) -> Device:
         return Device("cann", device_id, "Ascend NPU", 0)
 
     if prefer not in ("auto", "cpu"):
+        hint = (
+            "请检查 NOOCR_GPU_LIB_DIR 是否指向 cuDNN 9 的 bin 目录"
+            if "CUDAExecutionProvider" in providers
+            else "当前环境未安装 GPU 版 onnxruntime（onnxruntime-gpu）"
+        )
         log.warning(
-            "请求的执行后端 '{}' 不可用（当前可用: {}），已回退到 CPU。"
-            "如需 GPU 加速请安装 onnxruntime-gpu: pip install noocr[gpu]",
+            "请求的执行后端 '{}' 不可用（当前可用: {}），已回退到 CPU。{}",
             prefer,
             ", ".join(providers) or "无",
+            hint,
         )
     return Device("cpu", 0, "CPU", 0)
 
 
-def _cuda_ep_usable(device_id: int) -> bool:
+def _cuda_ep_usable(device_id: int) -> Optional[bool]:
     """实测 CUDA EP 能否真正初始化，而不是只看它是否被编译进来。
 
     ``get_available_providers()`` 列出 ``CUDAExecutionProvider`` 只说明
     打包时包含了它；缺少 CUDA/cuDNN 运行库时，ORT 会在创建 session 时
     打一条警告然后把算子全部交给 CPU，**不抛异常**。这会让"已启用 GPU"
-    的用户拿到纯CPU 的性能而毫无察觉。
+    的用户拿到纯 CPU 的性能而毫无察觉。
 
-    这里用一个4x4 的最小图建session，代价约1ms，却能提前把假GPU 拦下来。
+    这里用一个 4x4 的最小图建 session，代价约 1ms，却能提前把假 GPU 拦下来。
+
+    Returns:
+        ``True`` 实测可用；``False`` 实测不可用；``None`` 无法判定。
+
+        返回三态而非 bool，是因为构造探测图需要 ``onnx`` 包（GPU extra
+        才带）。缺它时若一律返回 ``False``，会把「CUDA 明明可用」的机器
+        判成不可用——这个误报比漏报更糟，它会让用户放弃 GPU 排查。
+        此时交给调用方退回到「EP 是否被编译进来」的宽松判断。
     """
     try:
         import onnxruntime as ort
@@ -255,14 +314,23 @@ def _cuda_ep_usable(device_id: int) -> bool:
             return "CUDAExecutionProvider" in sess.get_providers()
         finally:
             del sess  # 探测会话必须立刻释放，否则会占住显存不退还
+    except ImportError as e:
+        # 只在「探测图造不出来」时降级；session 创建失败是真实的不可用
+        log.debug("CUDA EP 无法实测（缺 {}），退回编译期判断: {}", e, type(e).__name__)
+        return None
     except Exception as e:
         log.debug("CUDA EP 不可用: {}", e)
         return False
 
 
 def _make_probe_model() -> bytes:
-    """生成一个恒等映射的微型 ONNX 模型，用于验证 EP 是否可用。"""
-    import onnx
+    """构造恒等映射的微型 ONNX 模型，用于验证 EP 是否真能初始化。
+
+    用``onnx`` 包（protobuf）构造，约 200 字节。``onnx`` 是 GPU extra的
+    依赖；缺它时本函数抛 ImportError，由 :func:`_cuda_ep_usable` 转为
+    ``None`` ——表示「无法判定」，让调用方退回到"只看 EP 是否编译进来"
+    的宽松判断，而不是误报成不可用。
+    """
     from onnx import TensorProto, helper
 
     x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 1, 4, 4])
@@ -271,8 +339,7 @@ def _make_probe_model() -> bytes:
     graph = helper.make_graph([node], "probe", [x], [y], [])
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     model.ir_version = 8
-    onnx.save(model, str(_PROBE_MODEL_PATH), save_as_external_data=False)
-    return _PROBE_MODEL_PATH.read_bytes()
+    return model.SerializeToString()
 
 
 def build_providers(device: Device, *, arena: bool = True) -> List[ProviderSpec]:

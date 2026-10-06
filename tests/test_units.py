@@ -181,6 +181,75 @@ cache._store[("m/a.onnx", "cpu:fix")] = 1
 cache._store[("m/b.onnx", "cuda:fix")] = 2
 check("通配符全清", cache.evict_device("*") == 2 and len(cache) == 0)
 
+print("\n=== CUDA EP 探测三态（True/False/None）===")
+import noocr.engine.session as _S  # noqa: E402
+
+
+def _ort_providers():
+    """当前 ORT 编译进去的 EP 列表；拿不到就当空。"""
+    try:
+        import onnxruntime as ort
+
+        return ort.get_available_providers()
+    except Exception:
+        return []
+
+
+_orig_usable = _S._cuda_ep_usable
+_orig_probe = _S._make_probe_model
+
+
+def _with_probe(fn):
+    """临时替换探测实现，返回 _cuda_ep_usable 的实际判定。"""
+    _S._cuda_ep_usable = fn
+    try:
+        return _S._cuda_ep_usable(0)
+    finally:
+        _S._cuda_ep_usable = _orig_usable
+
+
+check("实测可用 -> True", _with_probe(lambda i: True) is True)
+check("实测不可用 -> False", _with_probe(lambda i: False) is False)
+check("无法判定 -> None", _with_probe(lambda i: None) is None)
+
+# 真探测：缺 onnx 包时必须返回 None（而不是 False），否则会把
+# 「CUDA 明明可用」的机器误判成不可用
+_real = _orig_usable
+_S._make_probe_model = lambda: (_ for _ in ()).throw(ImportError("No module named 'onnx'"))
+try:
+    check("缺 onnx 时降级为 None", _with_probe(_real) is None)
+finally:
+    _S._make_probe_model = _orig_probe
+    _S._cuda_ep_usable = _orig_usable
+
+# _make_probe_model 本体（需要 onnx 包，跳过而非判失败）
+try:
+    import onnx  # noqa: F401
+
+    model = _S._make_probe_model()
+    import onnxruntime as ort
+
+    sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
+    names = [i.name for i in sess.get_inputs()]
+    check("探测模型可加载", names == ["x"], f"输入={names}")
+except ImportError:
+    print("  SKIP  探测模型（未装 onnx）")
+except Exception as e:
+    check("探测模型可加载", False, str(e)[:60])
+
+print("\n=== 设备探测缓存按 (prefer, device_id) 键控 ===")
+_S._DEVICE_CACHE.clear()
+if "CUDAExecutionProvider" in _ort_providers():
+    _S.detect_device("cpu")
+    cpu_hit = _S._DEVICE_CACHE.get(("cpu", 0))
+    _S.detect_device("cuda")
+    cuda_hit = _S._DEVICE_CACHE.get(("cuda", 0))
+    check("cpu 与 cuda 分开缓存", cpu_hit is not None and cuda_hit is not None
+          and cpu_hit is not cuda_hit)
+    check("cpu 缓存确实是 CPU", cpu_hit.kind == "cpu", f"{cpu_hit}")
+else:
+    print("  SKIP  设备缓存（本机无 CUDA EP）")
+
 print("\n" + "=" * 50)
 print(f"失败 {len(FAILED)} 项" + (f": {FAILED}" if FAILED else "，全部通过"))
 sys.exit(1 if FAILED else 0)

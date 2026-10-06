@@ -584,7 +584,7 @@ function renderDevPop() {
       const blocked = d.id === "cuda" && !gpuOk;
       /* 当前项本身失败时优先展示它的原因，它比「显卡不可用」更具体 */
       const why = (devInfo && !devInfo.usable && d.id === cur) ? devInfo.reason
-        : blocked ? "本机无可用 GPU 环境（缺 onnxruntime-gpu 或 CUDA/cuDNN）" : "";
+        : blocked ? "本机无可用 GPU 环境（缺 CUDA/cuDNN，或装的是纯 CPU 版 onnxruntime）" : "";
       const dis = blocked && d.id !== cur ? " disabled" : "";
       return `<button data-dev="${d.id}"${d.id === cur ? ' class="on"' : ""}${dis}>
         <span class="tag">${d.tag}</span><span>${d.name}</span>

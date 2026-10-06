@@ -3,7 +3,7 @@
 ONNX 全功能 OCR 系统。一个内核，多档后端，CPU / GPU 双模。
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt      # 一条命令，CPU 与 GPU 通用
 python -m noocr models --get ppocrv6-tiny   # 拉权重（约 6MB）
 python -m noocr 发票.jpg                     # 识别
 python -m noocr serve                        # Web 界面 http://127.0.0.1:8000
@@ -17,6 +17,7 @@ python -m noocr serve                        # Web 界面 http://127.0.0.1:8000
 
 | | |
 |---|---|
+| **一份依赖** | CPU 与 NVIDIA 机器装同一个 `requirements.txt`，无需重建环境 |
 | **CPU / GPU 双模** | 同一份代码，`--device cpu` 或 `--device cuda`，可自动探测 |
 | **三档后端** | PP-OCRv6 tiny（6MB）/ small（32MB，默认）/ v5（22MB） |
 | **多格式输入** | 图片、PDF、Word、Excel、PPT、URL |
@@ -37,20 +38,47 @@ python -m venv .venv && . .venv/Scripts/activate    # Windows
 pip install -r requirements.txt
 ```
 
-可选依赖：
+### 为什么只有一份依赖
+
+`requirements.txt` 装的是 `onnxruntime-gpu` 而非 `onnxruntime`，因为前者是后者的**超集**——它同时含CPU、CUDA、TensorRT 三个 EP，装一个包就覆盖了两种机器：
+
+| 包 | 可用 EP | 体积 |
+|---|---|---|
+| `onnxruntime` | CPU | ~15 MB |
+| `onnxruntime-gpu` | CPU / CUDA / TensorRT | ~700 MB |
+
+没有 NVIDIA 显卡的机器装GPU 版**照样能正常安装与运行**，只是GPU 部分永不启用。所以不需要区分「CPU 环境」和「GPU 环境」，也不需要为GPU 重建虚拟环境。
+
+代价是体积。若只跑 CPU 且在意安装速度/磁盘，换一份轻量的：
 
 ```bash
-pip install "noocr[doc]"    # PDF / Word / Excel / PPT
-pip install "noocr[web]"    # Web 界面与 REST API
-pip install "noocr[gpu]"    # NVIDIA GPU 加速
+pip install -r requirements-cpu.txt     # 约 15MB 的 ORT，识别结果完全一致
 ```
+
+哪天要开 GPU，改为执行 `pip install -r requirements.txt` 即可（GPU 版会覆盖 CPU 版）。
+
+### 系统级依赖（仅 GPU 需要）
+
+pip 只管 Python 包，CUDA 与 cuDNN 是**系统级运行库**，须单独安装：
+
+1. NVIDIA 驱动（≥ 525）
+2. CUDA 12.x
+3. **cuDNN 9**（注意是 9.x，ORT 1.20+ 依赖 `cudnn64_9.dll`）
+
+装完告诉项目 DLL 在哪（Windows 必填，Linux/macOS 一般不需要）：
+
+```bash
+set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin            # Windows
+export NOOCR_GPU_LIB_DIR=/usr/local/cudnn/lib       # Linux
+```
+
+项目也会自动在项目根、虚拟环境的 `site-packages/cudnn/` 等常见位置查找。
 
 ## GPU 加速
 
-GPU 上端到端比 CPU 快 **20-40 倍**（见下方[性能](#性能)）。
+GPU 上端到端比 CPU 快 **20-40 倍**（见下方[性能](#性能)）。依赖已在 `requirements.txt` 里，无需额外安装 Python 包；只要系统层装好 CUDA 12 + cuDNN 9 即可：
 
 ```bash
-pip install "noocr[gpu]"          # 装 onnxruntime-gpu
 python -m noocr 发票.jpg -d cuda
 python -m noocr serve --device cuda
 ```
@@ -66,11 +94,11 @@ python -m noocr serve --device cuda
 - 切换时自动卸载另一套模型并归还显存，代价约 0.4-0.6s；切换后若已有识别结果会自动重跑，方便直接对比速度；
 - 目标设备不可用时返回 400 并**保持原设备不变**，不会把能跑的服务弄成不能跑。
 
-也可以走API：
+也可以走 API：
 
 ```bash
 curl http://127.0.0.1:8000/api/device                       # 当前设备
-curl -X POST -F "device=cuda" .../api/device              # 切到GPU
+curl -X POST -F "device=cuda" .../api/device              # 切到 GPU
 ```
 
 ### cuDNN 9 是必需的
@@ -196,6 +224,22 @@ for line in result.all_lines:
 ```
 
 指定后端与参数：
+
+```python
+# 按次覆盖：这一次用CPU / 换后端，不影响别的调用
+r = ocr("扫描件.jpg", device="cpu")        # 强制 CPU
+r = ocr("扫描件.jpg", backend="ppocrv5")   # 临时换后端
+r = ocr("扫描件.jpg", dpi=300, max_pages=5)
+
+# 固化配置：长驻服务应该自己持有一个实例，模型只加载一次
+from noocr import OCRPipeline
+
+pipe = OCRPipeline(backend="ppocrv6-tiny", device="cuda", rec_batch_size=8)
+for path in paths:
+    print(pipe(path).text)
+```
+
+也可以直接拿后端：
 
 ```python
 from noocr.backends import get_backend

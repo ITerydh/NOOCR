@@ -80,3 +80,7 @@ desktop.ini
 *.key
 # 性能脚本的输出
 _bench_*.json
+
+# AI 助手本地数据（含项目记忆，不应进仓库）
+.workbuddy/
+.genie/

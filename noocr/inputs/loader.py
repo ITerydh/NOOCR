@@ -224,7 +224,7 @@ def _load_pdf(path: Path, dpi: int, max_pages: int) -> InputDocument:
             import fitz as pymupdf  # PyMuPDF<1.25 只提供 fitz 命名空间
     except ImportError as e:
         raise ImportError(
-            "处理 PDF 需要 PyMuPDF，请安装: pip install noocr[doc]"
+            "处理 PDF 需要 PyMuPDF，请安装: pip install pymupdf"
         ) from e
 
     doc = pymupdf.open(str(path))
@@ -263,7 +263,7 @@ def _load_docx(path: Path, max_pages: int) -> InputDocument:
     try:
         import docx  # python-docx
     except ImportError as e:
-        raise ImportError("处理 Word 需要 python-docx，请安装: pip install noocr[doc]") from e
+        raise ImportError("处理 Word 需要 python-docx，请安装: pip install python-docx") from e
 
     document = docx.Document(str(path))
 
@@ -328,7 +328,7 @@ def _load_xlsx(path: Path) -> InputDocument:
     try:
         import openpyxl
     except ImportError as e:
-        raise ImportError("处理 Excel 需要 openpyxl，请安装: pip install noocr[doc]") from e
+        raise ImportError("处理 Excel 需要 openpyxl，请安装: pip install openpyxl") from e
 
     wb = openpyxl.load_workbook(str(path), data_only=True)
     blocks: List[str] = []
@@ -353,7 +353,7 @@ def _load_pptx(path: Path, dpi: int, max_pages: int) -> InputDocument:
     try:
         from pptx import Presentation
     except ImportError as e:
-        raise ImportError("处理 PPT 需要 python-pptx，请安装: pip install noocr[doc]") from e
+        raise ImportError("处理 PPT 需要 python-pptx，请安装: pip install python-pptx") from e
 
     prs = Presentation(str(path))
     blocks: List[str] = []

@@ -1,12 +1,56 @@
-# 核心依赖
+# NOOCR 依赖 —— 一份文件，CPU 与 GPU 通用
+#
+#   pip install -r requirements.txt
+#
+# 就这一条命令，CPU 机器与 NVIDIA 机器都能跑。是否启用 GPU 由运行时
+# 自动探测，不需要装第二套依赖、也不需要重建环境。
+#
+# ---------------------------------------------------------------- GPU 说明
+#
+# 这里装的是 onnxruntime-gpu，**不是** onnxruntime。原因是前者是后者的
+# 超集：它同时包含 CPUExecutionProvider 与 CUDAExecutionProvider，装它
+# 一个包即可覆盖两种场景。
+#
+#   onnxruntime-gpu 的 EPs : CUDA, TensorRT, CPU
+#   onnxruntime的 EPs : CPU
+#
+# 已实测（onnxruntime-gpu 1.23.2，无GPU 的机器上）：
+#   ort.get_device()                -> 'GPU'
+#   ort.get_available_providers()   -> CUDA / TensorRT / CPU
+#   noocr 图片.jpg -d cpu           -> 正常，约2.0s
+#
+# 代价是包体积约 700MB（CPU 版约 15MB），且**没有 NVIDIA 显卡的机器
+# 也能正常安装**，只是 GPU 部分永远不会被启用。若只跑 CPU 且在意体积，
+# 可改下一行注释掉、用 requirements-cpu.txt。
+#
+# ------------------------------------------------------------ CUDA / cuDNN
+#
+# pip 只负责 Python 包，CUDA 与 cuDNN 是**系统级运行库**，仍需单独安装：
+#   1. NVIDIA 驱动（>= 525）
+#   2. CUDA 12.x
+#   3. cuDNN 9（注意是 9.x，ORT 1.20+ 依赖 cudnn64_9.dll）
+#
+# 缺 cuDNN 的表现非常隐蔽：ORT **不报错**，只是把算子悄悄交给 CPU，
+# 你会拿到纯 CPU 的性能却以为在用显卡。本项目对此做了三重防护：
+# 启动实测CUDA EP、session 创建后核对实际生效的 EP、Web 界面顶栏
+# 常驻设备徽标。
+#
+# 安装 cuDNN 后告诉项目 DLL 在哪（Windows 必填，Linux/macOS 一般不需要）：
+#   set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin            # Windows
+#   export NOOCR_GPU_LIB_DIR=/usr/local/cudnn/lib       # Linux
+#
+# 项目也会自动在项目根、虚拟环境的 site-packages/cudnn/ 等常见位置查找。
+
+# ---------------------------------------------------------------- 核心
 numpy>=1.24
 opencv-python-headless>=4.8
-onnxruntime>=1.16
+onnxruntime-gpu>=1.20
+onnx>=1.16
 pydantic>=2.0
 loguru>=0.7
 pyclipper>=1.3
 
-# 文档输入：PDF / Word / Excel / PPT
+# 文档输入：PDF / Word / Excel / PPT / HTML
 pymupdf>=1.23
 python-docx>=1.1
 openpyxl>=3.1

@@ -4,9 +4,13 @@
 
     from noocr import ocr
 
-    result = ocr("扫描件.png")            # 自动选后端
+    result = ocr("扫描件.png")                # 自动选后端
     print(result.text)
-    print(result.to_markdown())           # 文档直接转 Markdown
+    print(result.to_markdown())               # 文档直接转 Markdown
+
+    # 这一次想用CPU / 换后端，不影响别的调用
+    r2 = ocr("扫描件.png", device="cpu")
+    r3 = ocr("扫描件.png", backend="ppocrv5")
 
 设计要点：
 

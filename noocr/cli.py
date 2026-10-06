@@ -65,9 +65,13 @@ def _run_serve(args) -> int:
     try:
         from .web import run
     except ImportError as e:
+        # requirements.txt 已含web 依赖，所以这里更可能是用户手动精简过
+        # 安装。给出可直接复制执行的两条命令，而不是只丢一个 extras 名。
+        missing = getattr(e, "name", None) or "fastapi/uvicorn"
         print(
-            "启动 Web 服务需要额外依赖，请安装: pip install noocr[web]\n"
-            f"（{e}）",
+            f"启动 Web 服务缺少依赖: {missing}\n"
+            f"  完整安装:  pip install -r requirements.txt\n"
+            f"  仅补Web:  pip install fastapi uvicorn[standard] python-multipart",
             file=sys.stderr,
         )
         return 5
