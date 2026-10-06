@@ -214,6 +214,26 @@ python scripts/perf/bench_device.py cpu     # CPU baseline
 python scripts/perf/bench_device.py cuda    # GPU baseline
 ```
 
+### Measured against OnnxOCR
+
+Same 8 sample images, same RTX 4070 Ti SUPER, same ONNX Runtime 1.23.2, angle classification enabled on both sides, image decoding included, median of 5 runs per image:
+
+| Sample | Resolution | OnnxOCR<br>ppocrv5 | NOOCR<br>v6 small | Ratio | NOOCR<br>v6 tiny | Ratio |
+|---|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 3091 ms / 81 lines | 459 ms / 73 lines | **6.7x** | 327 ms / 74 lines | **9.5x** |
+| `exam_chinese_primary` | 1920x2560 | 3320 ms / 72 lines | 734 ms / 65 lines | **4.5x** | 490 ms / 75 lines | **6.8x** |
+| `id_card_china` | 1148x672 | 656 ms / 10 lines | 266 ms / 11 lines | **2.5x** | 169 ms / 9 lines | **3.9x** |
+| `medical_lab_report` | 430x267 | 2601 ms / 69 lines | 454 ms / 69 lines | **5.7x** | 259 ms / 69 lines | **10.0x** |
+| `product_spec_sheet` | 500x500 | 800 ms / 16 lines | 351 ms / 16 lines | **2.3x** | 147 ms / 16 lines | **5.5x** |
+| `receipt_bank_statement` | 500x667 | 1207 ms / 30 lines | 396 ms / 30 lines | **3.0x** | 249 ms / 30 lines | **4.8x** |
+| `scene_vertical_plaque` | 720x1150 | 312 ms / 2 lines | 135 ms / 2 lines | **2.3x** | 65 ms / 2 lines | **4.8x** |
+| `ticket_train` | 670x510 | 776 ms / 18 lines | 359 ms / 19 lines | **2.2x** | 184 ms / 20 lines | **4.2x** |
+| **Median** | — | **1004 ms** | **378 ms** | **2.66x** | **216 ms** | **4.64x** |
+
+The gap comes mainly from three places: det input resolution and memory arena strategy (PP-OCRv6 det has a fixed short side of 736, so its shape set is finite and discrete — turning off `dynamic_shape` lets the arena work, worth about 32% on det), dictionary cropping in rec, and session reuse during batch inference.
+
+Reproduce with `scripts/perf/compare_onnxocr.md` (requires a separate OnnxOCR checkout and dependency environment).
+
 ## Backend comparison
 
 | Backend | Size | Relative speed | Weighted confidence | Use for |
@@ -248,6 +268,10 @@ tests/                   tests and benchmarks
 scripts/
 ├─ publish_weights.py      weight publishing script
 ├─ perf/                   performance benchmarks and A/B scripts
+│  ├─ bench_device.py      CPU / GPU baseline
+│  ├─ compare_onnxocr.md   how to reproduce the OnnxOCR comparison
+│  └─ ab_*.py              arena / cuDNN / tier A/B
+├─ shrink_images.py        screenshot compression
 └─ models_repo_card.md     model card for the weight repo
 ```
 

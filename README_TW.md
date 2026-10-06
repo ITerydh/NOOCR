@@ -213,6 +213,26 @@ python scripts/perf/bench_device.py cpu     # CPU 基線
 python scripts/perf/bench_device.py cuda    # GPU 基線
 ```
 
+### 與 OnnxOCR 實測對比
+
+同一批 8 張範例圖、同一塊 RTX 4070 Ti SUPER、同為 ONNX Runtime 1.23.2，兩側都開啟方向分類、含圖片解碼，取每圖 5 輪中位數：
+
+| 範例圖 | 解析度 | OnnxOCR<br>ppocrv5 | NOOCR<br>v6 small | 倍數 | NOOCR<br>v6 tiny | 倍數 |
+|---|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 3091 ms / 81 行 | 459 ms / 73 行 | **6.7x** | 327 ms / 74 行 | **9.5x** |
+| `exam_chinese_primary` | 1920x2560 | 3320 ms / 72 行 | 734 ms / 65 行 | **4.5x** | 490 ms / 75 行 | **6.8x** |
+| `id_card_china` | 1148x672 | 656 ms / 10 行 | 266 ms / 11 行 | **2.5x** | 169 ms / 9 行 | **3.9x** |
+| `medical_lab_report` | 430x267 | 2601 ms / 69 行 | 454 ms / 69 行 | **5.7x** | 259 ms / 69 行 | **10.0x** |
+| `product_spec_sheet` | 500x500 | 800 ms / 16 行 | 351 ms / 16 行 | **2.3x** | 147 ms / 16 行 | **5.5x** |
+| `receipt_bank_statement` | 500x667 | 1207 ms / 30 行 | 396 ms / 30 行 | **3.0x** | 249 ms / 30 行 | **4.8x** |
+| `scene_vertical_plaque` | 720x1150 | 312 ms / 2 行 | 135 ms / 2 行 | **2.3x** | 65 ms / 2 行 | **4.8x** |
+| `ticket_train` | 670x510 | 776 ms / 18 行 | 359 ms / 19 行 | **2.2x** | 184 ms / 20 行 | **4.2x** |
+| **中位** | — | **1004 ms** | **378 ms** | **2.66x** | **216 ms** | **4.64x** |
+
+差距主要來自三處：det 的輸入解析度與記憶體 arena 策略（PP-OCRv6 det 短邊恆 736，形狀集合有限，關掉 `dynamic_shape` 讓 arena 生效後提速約 32%）、rec 的字典裁剪，以及批量推理時的工作階段重用。
+
+復現：`scripts/perf/compare_onnxocr.md`（需本機另備一份 OnnxOCR 檢出與相依環境）。
+
 ## 後端對比
 
 | 後端 | 體積 | 相對速度 | 加權信賴度 | 適用 |
@@ -247,6 +267,10 @@ tests/                   測試與基準
 scripts/
 ├─ publish_weights.py      權重發布腳本
 ├─ perf/                   效能基準與 A/B 腳本
+│  ├─ bench_device.py      CPU / GPU 基線
+│  ├─ compare_onnxocr.md   與 OnnxOCR 對比的復現說明
+│  └─ ab_*.py              arena / cuDNN / 檔位 A/B
+├─ shrink_images.py        截圖壓縮
 └─ models_repo_card.md     權重倉庫模型卡
 ```
 
