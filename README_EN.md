@@ -178,6 +178,10 @@ The UI at `http://127.0.0.1:8000/` — upload and parameters on the left, image/
 
 ![Web UI: click a row to highlight it on the image](docs/images/webui-detail.jpg)
 
+**Light and dark themes** — the moon/sun button in the top bar switches the whole palette; both themes meet WCAG AA contrast.
+
+![Web UI: light theme](docs/images/webui-light.jpg)
+
 </details>
 
 | Method | Path | Description |

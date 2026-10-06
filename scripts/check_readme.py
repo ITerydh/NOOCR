@@ -117,6 +117,27 @@ def main() -> int:
             if not (ROOT / link).is_file():
                 fail(f"{name}: 语言切换指向不存在的文件 {link}")
 
+        # 图片必须真的存在。README 里一张裂图不影响任何结构校验，
+        # 只有肉眼看渲染结果才发现——而那已经是发布之后的事了。
+        # 三份README 引用同一批图，所以在这里逐个查文件即可。
+        for ref in image_refs(lines):
+            if not (ROOT / ref).is_file():
+                fail(f"{name}: 图片不存在 {ref}")
+
+        # 三份README 引用的图片集合必须一致。少一张就意味着某个语种
+        # 的读者看不到那张图，而结构校验（标题/表格/代码块）全都能通过。
+        if name == base_name:
+            base_imgs = set(image_refs(lines))
+        else:
+            other_imgs = set(image_refs(lines))
+            if other_imgs != base_imgs:
+                only_base = sorted(base_imgs - other_imgs)
+                only_other = sorted(other_imgs - base_imgs)
+                fail(
+                    f"{name}: 图片引用与 {base_name} 不一致"
+                    f"（缺 {only_base or '无'}，多 {only_other or '无'}）"
+                )
+
         # 不该出现其它语种独有的标题写法（英文版混中文标题等）
         if name.endswith("_EN.md"):
             for i, _, text in headings(lines):
@@ -183,6 +204,26 @@ def main() -> int:
     print(f"  标题 {base_heads} 个 / 代码块 {len(code_blocks(base))} 个 / 表格 {len(table_shapes(base))} 张，三份一致")
     print("全部通过")
     return 0
+
+
+def image_refs(lines: list[str]) -> list[str]:
+    """抽出所有本地图片引用（Markdown 与 HTML 两种写法）。
+
+    只收仓库内的相对路径：``docs/images/xxx.jpg``。
+    远程 URL（badge、 shields.io）不在校验范围内——它们本来就可能
+    拿不到，且判断「远程图是否裂了」不属于 README 结构校验的职责。
+    """
+    out: list[str] = []
+    for line in lines:
+        for m in re.finditer(r"!\[[^\]]*\]\(([^)\s]+)", line):
+            ref = m.group(1)
+            if not ref.startswith(("http://", "https://", "#")):
+                out.append(ref)
+        for m in re.finditer(r'<img\s[^>]*src="([^"]+)"', line):
+            ref = m.group(1)
+            if not ref.startswith(("http://", "https://", "#")):
+                out.append(ref)
+    return out
 
 
 def code_blocks(lines: list[str]) -> list[str]:

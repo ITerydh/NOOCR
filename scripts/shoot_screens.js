@@ -70,10 +70,15 @@ async function waitDone(page) {
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: "networkidle" });
 
-    if (c.theme === "light") {
-      await page.evaluate(() =>
-        document.documentElement.setAttribute("data-theme", "light"));
-    }
+    // 每个用例都显式定死系统色，再定 data-theme。
+    // 只设 data-theme 不够：emulateMedia 决定 matchMedia 的结果，
+    // 而「跟随系统」那条分支（无 data-theme 时）走的就是它——
+    // 不锁系统色的话，截图取到哪个主题取决于 CI 机器的设置。
+    await page.emulateMedia({ colorScheme: c.theme });
+    await page.evaluate((t) => {
+      localStorage.setItem("noocr.theme", t);
+      document.documentElement.setAttribute("data-theme", t);
+    }, c.theme);
 
     // 走真实上传链路
     await page.setInputFiles("#file", path.join(STATIC, c.sample));

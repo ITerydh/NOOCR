@@ -177,6 +177,10 @@ noocr serve --host 0.0.0.0 --port 8000 --device cuda
 
 ![Web 介面：點明細行圖上高亮連動](docs/images/webui-detail.jpg)
 
+**明暗主題** —— 頂欄月亮／太陽按鈕切換整套配色，兩種主題對比度皆達 WCAG AA。
+
+![Web 介面：淺色主題](docs/images/webui-light.jpg)
+
 </details>
 
 | 方法 | 路徑 | 說明 |

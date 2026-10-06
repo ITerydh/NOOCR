@@ -9,6 +9,121 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f6ae0'/%3E%3Cpath d='M7 10h4M12 10h4M17 10h4M22 10h3M7 16h3M11 16h4M16 16h4M21 16h4M7 22h4M12 22h4M17 22h5' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 /* ============================================================
+   NOOCR UI v3 — 配色变量（浅色 / 深色两套）
+   ------------------------------------------------------------
+   v3 视觉层用!important 覆盖旧规则（尺寸、圆角、层次），
+   所以它的颜色不能靠旧 token带着走——必须自成一套。
+   浅色值即v3 段原先硬编码的那些，逐个搬进来，观感不变；
+   深色另配一套，两个主题都由 data-theme / prefers-color-scheme
+   切换，规则与旧 token 完全一致。
+   ============================================================ */
+:root {
+  --v3-bg:#f5f7fb;
+  --v3-panel:        rgba(255,255,255,.94);
+  --v3-panel-solid:  #ffffff;
+  --v3-surface:      rgba(255,255,255,.96);
+  --v3-inset:        #f2f5f9;
+  --v3-border:       #dfe6ef;
+  --v3-border-strong:#dbe3ee;
+  --v3-hairline:     #edf0f4;
+  --v3-text:         #1d2939;
+  --v3-text-2:       #667085;
+  --v3-text-3:       #98a2b3;
+  --v3-primary:      #397ff6;
+  --v3-primary-soft: #f5f9ff;
+  --v3-green:        #22a06b;
+  --v3-red:          #f87171;
+  --v3-ring:         rgba(57,127,246,.08);
+  --v3-scrollbar:    #ccd5e1;
+  --v3-checker:      #f2f5f9;
+  --v3-cta:          linear-gradient(135deg, #4b8ff7 0%, #3479eb 100%);
+  --v3-cta-shadow:   rgba(52,121,235,.19);
+  --v3-cta-shadow-hi:rgba(52,121,235,.25);
+  --v3-glow-1:       rgba(65, 133, 246, .055);
+  --v3-glow-2:       rgba(79, 114, 190, .035);
+  --v3-header-bg:     rgba(255,255,255,.90);
+  --v3-header-border: rgba(215,224,235,.85);
+  --v3-header-shadow: 0 1px 12px rgba(31, 56, 88, .035);
+  --v3-card-h-bg:     linear-gradient(180deg, #fff, #fbfcfe);
+  --v3-drop-bg:       linear-gradient(180deg, rgba(247,250,254,.92), rgba(250,252,255,.98));
+  --v3-shadow:        0 8px 28px rgba(31, 56, 88, .065);
+  --v3-shadow-hover:  0 12px 34px rgba(31, 56, 88, .105);
+  --v3-radius:        14px;
+  --v3-radius-sm:     9px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --v3-bg:#0b0f16;
+  --v3-panel:        rgba(22,28,40,.94);
+  --v3-panel-solid:  #161c28;
+  --v3-surface:      rgba(18,24,34,.96);
+  --v3-inset:        #11161f;
+  --v3-border:       #26303f;
+  --v3-border-strong:#334052;
+  --v3-hairline:     #1e2634;
+  --v3-text:         #e6edf3;
+  --v3-text-2:       #a8b1bd;
+  --v3-text-3:       #7b8492;
+  --v3-primary:      #5b8cff;
+  --v3-primary-soft: rgba(91,140,255,.12);
+  --v3-green:        #3fb950;
+  --v3-red:          #f85149;
+  --v3-ring:         rgba(91,140,255,.20);
+  --v3-scrollbar:    #3d444f;
+  --v3-checker:      #1a212c;
+  --v3-cta:          linear-gradient(135deg, #3f7ce8 0%, #2f62cf 100%);
+  --v3-cta-shadow:   rgba(0,0,0,.40);
+  --v3-cta-shadow-hi:rgba(0,0,0,.50);
+  --v3-glow-1:       rgba(65, 133, 246, .10);
+  --v3-glow-2:       rgba(79, 114, 190, .07);
+  --v3-header-bg:     rgba(16,21,30,.88);
+  --v3-header-border: rgba(48,58,74,.85);
+  --v3-header-shadow: 0 1px 12px rgba(0,0,0,.45);
+  --v3-card-h-bg:     linear-gradient(180deg, #161c28, #131924);
+  --v3-drop-bg:       linear-gradient(180deg, rgba(26,33,45,.92), rgba(20,26,36,.98));
+  --v3-shadow:        0 8px 28px rgba(0,0,0,.45);
+  --v3-shadow-hover:  0 12px 34px rgba(0,0,0,.55);
+}
+
+/* 跟随系统（未手动设置时生效）——与上面旧 token 的写法保持一致 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --v3-bg:#0b0f16;
+    --v3-panel:        rgba(22,28,40,.94);
+    --v3-panel-solid:  #161c28;
+    --v3-surface:      rgba(18,24,34,.96);
+    --v3-inset:        #11161f;
+    --v3-border:       #26303f;
+    --v3-border-strong:#334052;
+    --v3-hairline:     #1e2634;
+    --v3-text:         #e6edf3;
+    --v3-text-2:       #a8b1bd;
+    --v3-text-3:       #7b8492;
+    --v3-primary:      #5b8cff;
+    --v3-primary-soft: rgba(91,140,255,.12);
+    --v3-green:        #3fb950;
+    --v3-red:          #f85149;
+    --v3-ring:         rgba(91,140,255,.20);
+    --v3-scrollbar:    #3d444f;
+    --v3-checker:      #1a212c;
+    --v3-cta:          linear-gradient(135deg, #3f7ce8 0%, #2f62cf 100%);
+    --v3-cta-shadow:   rgba(0,0,0,.40);
+    --v3-cta-shadow-hi:rgba(0,0,0,.50);
+    --v3-glow-1:       rgba(65, 133, 246, .10);
+    --v3-glow-2:       rgba(79, 114, 190, .07);
+    --v3-header-bg:     rgba(16,21,30,.88);
+    --v3-header-border: rgba(48,58,74,.85);
+    --v3-header-shadow: 0 1px 12px rgba(0,0,0,.45);
+    --v3-card-h-bg:     linear-gradient(180deg, #161c28, #131924);
+    --v3-drop-bg:       linear-gradient(180deg, rgba(26,33,45,.92), rgba(20,26,36,.98));
+    --v3-shadow:        0 8px 28px rgba(0,0,0,.45);
+    --v3-shadow-hover:  0 12px 34px rgba(0,0,0,.55);
+  }
+}
+
+/* ============================================================
    设计 token
    ------------------------------------------------------------
    颜色、字号、间距、圆角、阴影全部收敛到这里。此前各处随手
@@ -1948,32 +2063,19 @@ button:active:not(:disabled) {
 /* ============================================================
    NOOCR UI v3 — Premium OCR Workbench
    仅视觉层重构：不修改 DOM、ID、接口、事件和业务逻辑。
-   ============================================================ */
 
-:root {
-  --v3-bg: #f5f7fb;
-  --v3-panel: rgba(255,255,255,.94);
-  --v3-panel-solid: #ffffff;
-  --v3-border: #e5eaf2;
-  --v3-border-strong: #d8e0eb;
-  --v3-text: #1d2939;
-  --v3-text-2: #667085;
-  --v3-text-3: #98a2b3;
-  --v3-primary: #397ff6;
-  --v3-primary-2: #2f6fe4;
-  --v3-primary-soft: #eef5ff;
-  --v3-green: #22a06b;
-  --v3-shadow: 0 8px 28px rgba(31, 56, 88, .065);
-  --v3-shadow-hover: 0 12px 34px rgba(31, 56, 88, .105);
-  --v3-radius: 14px;
-  --v3-radius-sm: 9px;
-}
+   配色全部走 --v3-* 变量：**这一段原本把浅色值硬编码在各条
+   规则里再用 !important 压住旧主题**，结果是 data-theme=dark
+   时整页仍是浅色底、左上角白字 logo 看不见。现在浅色值搬进
+   变量、深色另给一套，变量定义见文件开头（浅/深两套），
+   浅色下的观感与之前逐像素一致。
+   ============================================================ */
 
 /* ---------- 全局背景 / 字体 ---------- */
 html, body {
   background:
-    radial-gradient(circle at 18% 8%, rgba(65, 133, 246, .055), transparent 28%),
-    radial-gradient(circle at 88% 80%, rgba(79, 114, 190, .035), transparent 26%),
+    radial-gradient(circle at 18% 8%, var(--v3-glow-1), transparent 28%),
+    radial-gradient(circle at 88% 80%, var(--v3-glow-2), transparent 26%),
     var(--v3-bg) !important;
   color: var(--v3-text) !important;
 }
@@ -1984,7 +2086,7 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--v3-scrollbar) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -1997,7 +2099,7 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #ccd5e1;
+  background: var(--v3-scrollbar);
   border-radius: 99px;
 }
 
@@ -2009,9 +2111,9 @@ button, input, select {
 header,
 .topbar,
 .head {
-  background: rgba(255,255,255,.90) !important;
-  border-bottom: 1px solid rgba(215,224,235,.85) !important;
-  box-shadow: 0 1px 12px rgba(31, 56, 88, .035) !important;
+  background: var(--v3-header-bg) !important;
+  border-bottom: 1px solid var(--v3-header-border) !important;
+  box-shadow: var(--v3-header-shadow) !important;
   backdrop-filter: blur(14px);
 }
 
@@ -2063,9 +2165,9 @@ header,
   height: 42px !important;
   min-height: 42px !important;
   padding: 0 14px !important;
-  background: linear-gradient(180deg, #fff, #fbfcfe) !important;
-  border-bottom: 1px solid #edf0f5 !important;
-  color: #64748b !important;
+  background: var(--v3-card-h-bg) !important;
+  border-bottom: 1px solid var(--v3-hairline) !important;
+  color: var(--v3-text-2) !important;
   font-size: 11px !important;
   font-weight: 650 !important;
   letter-spacing: .035em;
@@ -2077,37 +2179,36 @@ header,
   width: 5px !important;
   height: 5px !important;
   border-radius: 50% !important;
-  background: #397ff6 !important;
-  box-shadow: 0 0 0 4px #eef5ff !important;
+  background: var(--v3-primary) !important;
+  box-shadow: 0 0 0 4px var(--v3-primary-soft) !important;
 }
 
 /* ---------- 上传区域：明显精致化 ---------- */
 .side > .card:first-child .card-b {
   padding: 10px !important;
-  background: #fff !important;
+  background: var(--v3-panel-solid) !important;
 }
 
 .side .drop {
   height: 126px !important;
   min-height: 126px !important;
   padding: 10px !important;
-  border: 1px dashed #c9d8eb !important;
+  border: 1px dashed var(--v3-border-strong) !important;
   border-radius: 11px !important;
-  background:
-    linear-gradient(180deg, rgba(247,250,254,.92), rgba(250,252,255,.98)) !important;
+  background: var(--v3-drop-bg) !important;
   transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 
 .side .drop:hover {
-  border-color: #8fb5f1 !important;
-  background: #f7faff !important;
-  box-shadow: inset 0 0 0 1px rgba(57,127,246,.05);
+  border-color: var(--v3-primary) !important;
+  background: var(--v3-primary-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--v3-ring);
 }
 
 /* 空上传状态 */
 .side .drop .idle {
   gap: 4px !important;
-  color: #9aabc0 !important;
+  color: var(--v3-text-3) !important;
 }
 
 .side .drop .idle .ico,
@@ -2117,19 +2218,19 @@ header,
   padding: 8px !important;
   margin-bottom: 2px !important;
   border-radius: 10px !important;
-  background: #edf4ff !important;
-  color: #4b89ef !important;
+  background: var(--v3-primary-soft) !important;
+  color: var(--v3-primary) !important;
 }
 
 /* 上传提示文字 */
 .side .drop .idle strong,
 .side .drop .idle b {
-  color: #7b8da5 !important;
+  color: var(--v3-text-2) !important;
   font-size: 11px !important;
 }
 
 .side .drop .idle small {
-  color: #a1aec0 !important;
+  color: var(--v3-text-3) !important;
   font-size: 9px !important;
 }
 
@@ -2142,7 +2243,7 @@ header,
 .side .drop.filled .thumb {
   height: 110px !important;
   border-radius: 9px !important;
-  background: #f2f5f9 !important;
+  background: var(--v3-inset) !important;
 }
 
 .side .drop.filled .thumb img {
@@ -2174,7 +2275,7 @@ header,
 
 .side-params .card-b {
   padding: 11px !important;
-  background: #fff !important;
+  background: var(--v3-panel-solid) !important;
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
   gap: 8px 9px !important;
@@ -2190,7 +2291,7 @@ header,
 .side-params .f > label {
   display: block !important;
   margin: 0 0 4px 1px !important;
-  color: #7b8799 !important;
+  color: var(--v3-text-2) !important;
   font-size: 9.5px !important;
   line-height: 14px !important;
   font-weight: 560 !important;
@@ -2207,10 +2308,10 @@ header,
   height: 34px !important;
   min-height: 34px !important;
   padding: 0 10px !important;
-  border: 1px solid #dbe3ee !important;
+  border: 1px solid var(--v3-border-strong) !important;
   border-radius: 8px !important;
-  background: #fbfcfe !important;
-  color: #344054 !important;
+  background: var(--v3-panel-solid) !important;
+  color: var(--v3-text) !important;
   font-size: 10.5px !important;
   outline: none !important;
   transition: all .16s ease;
@@ -2218,15 +2319,15 @@ header,
 
 .side-params select:hover,
 .side-params input[type="number"]:hover {
-  border-color: #b9c9de !important;
-  background: #fff !important;
+  border-color: var(--v3-primary) !important;
+  background: var(--v3-primary-soft) !important;
 }
 
 .side-params select:focus,
 .side-params input[type="number"]:focus {
-  border-color: #77a5ed !important;
-  background: #fff !important;
-  box-shadow: 0 0 0 3px rgba(57,127,246,.08) !important;
+  border-color: var(--v3-primary) !important;
+  background: var(--v3-panel-solid) !important;
+  box-shadow: 0 0 0 3px var(--v3-ring) !important;
 }
 
 /* 两个数字参数 */
@@ -2250,9 +2351,9 @@ header,
   justify-content: space-between !important;
   gap: 6px !important;
   box-sizing: border-box;
-  border: 1px solid #e0e6ee !important;
+  border: 1px solid var(--v3-border) !important;
   border-radius: 8px !important;
-  background: #f8fafc !important;
+  background: var(--v3-inset) !important;
 }
 
 .side-params .toggles .check {
@@ -2260,12 +2361,12 @@ header,
   align-items: center !important;
   gap: 4px !important;
   white-space: nowrap !important;
-  color: #7a8798 !important;
+  color: var(--v3-text-2) !important;
   font-size: 8.5px !important;
 }
 
 .side-params .toggles input {
-  accent-color: #397ff6;
+  accent-color: var(--v3-primary);
   width: 12px !important;
   height: 12px !important;
   margin: 0 !important;
@@ -2284,8 +2385,8 @@ header,
   min-height: 39px !important;
   border: 0 !important;
   border-radius: 10px !important;
-  background: linear-gradient(135deg, #4b8ff7 0%, #3479eb 100%) !important;
-  box-shadow: 0 7px 16px rgba(52,121,235,.19) !important;
+  background: var(--v3-cta) !important;
+  box-shadow: 0 7px 16px var(--v3-cta-shadow) !important;
   color: #fff !important;
   font-size: 12px !important;
   font-weight: 680 !important;
@@ -2296,7 +2397,7 @@ header,
 .side-actions #run:hover {
   filter: brightness(1.025);
   transform: translateY(-1px);
-  box-shadow: 0 9px 20px rgba(52,121,235,.25) !important;
+  box-shadow: 0 9px 20px var(--v3-cta-shadow-hi) !important;
 }
 
 .side-actions #run:active {
@@ -2314,64 +2415,64 @@ header,
   height: 31px !important;
   min-height: 31px !important;
   padding: 0 5px !important;
-  border: 1px solid #dfe6ef !important;
+  border: 1px solid var(--v3-border) !important;
   border-radius: 8px !important;
-  background: rgba(255,255,255,.94) !important;
-  color: #69788e !important;
+  background: var(--v3-panel) !important;
+  color: var(--v3-text-2) !important;
   font-size: 9px !important;
   transition: all .15s ease;
 }
 
 .side-actions .btn-line button:hover {
-  border-color: #b9cbe5 !important;
-  color: #3b73c9 !important;
-  background: #f7faff !important;
+  border-color: var(--v3-primary) !important;
+  color: var(--v3-primary) !important;
+  background: var(--v3-primary-soft) !important;
 }
 
 /* ---------- 中间主舞台 ---------- */
 .main {
-  background: rgba(255,255,255,.96) !important;
+  background: var(--v3-surface) !important;
 }
 
 .viewer-bar {
   height: 48px !important;
   padding: 0 12px !important;
-  background: rgba(255,255,255,.96) !important;
-  border-bottom: 1px solid #edf0f4 !important;
+  background: var(--v3-surface) !important;
+  border-bottom: 1px solid var(--v3-hairline) !important;
 }
 
 .stage {
   background:
-    linear-gradient(45deg, #f2f5f9 25%, transparent 25%),
-    linear-gradient(-45deg, #f2f5f9 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #f2f5f9 75%),
-    linear-gradient(-45deg, transparent 75%, #f2f5f9 75%) !important;
+    linear-gradient(45deg, var(--v3-checker) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--v3-checker) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--v3-checker) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--v3-checker) 75%) !important;
   background-size: 18px 18px !important;
   background-position: 0 0, 0 9px, 9px -9px, -9px 0 !important;
 }
 
 .detail {
-  background: rgba(255,255,255,.96) !important;
-  border-left: 1px solid #e5eaf1 !important;
+  background: var(--v3-surface) !important;
+  border-left: 1px solid var(--v3-hairline) !important;
 }
 
 .detail table thead,
 .detail th {
-  background: #f8fafc !important;
-  color: #748197 !important;
-  border-bottom: 1px solid #e5eaf1 !important;
+  background: var(--v3-inset) !important;
+  color: var(--v3-text-2) !important;
+  border-bottom: 1px solid var(--v3-hairline) !important;
 }
 
 /* ---------- 底部：识别记录 ---------- */
 .hist {
-  background: rgba(255,255,255,.96) !important;
+  background: var(--v3-surface) !important;
 }
 
 .hist .tabs {
   height: 43px !important;
   padding: 0 10px !important;
-  border-bottom: 1px solid #edf0f4 !important;
-  background: #fff !important;
+  border-bottom: 1px solid var(--v3-hairline) !important;
+  background: var(--v3-panel-solid) !important;
 }
 
 .hist .tabs > * {
@@ -2379,42 +2480,42 @@ header,
   height: 43px !important;
   padding: 0 12px !important;
   border: 0 !important;
-  color: #7b8798 !important;
+  color: var(--v3-text-2) !important;
   font-size: 10.5px !important;
 }
 
 .hist .tabs > *.active {
-  color: #397ff6 !important;
-  background: #f5f9ff !important;
-  box-shadow: inset 0 -2px 0 #4b8ff7 !important;
+  color: var(--v3-primary) !important;
+  background: var(--v3-primary-soft) !important;
+  box-shadow: inset 0 -2px 0 var(--v3-primary) !important;
 }
 
 .hist .empty {
-  color: #98a5b7 !important;
+  color: var(--v3-text-3) !important;
 }
 
 .hist .empty strong {
-  color: #7c8ba0 !important;
+  color: var(--v3-text-2) !important;
 }
 
 /* ---------- 右下示例图：从粗糙卡片改成 gallery ---------- */
 .samples-wrap {
-  background: rgba(255,255,255,.96) !important;
+  background: var(--v3-surface) !important;
 }
 
 .samples {
   padding: 10px !important;
   gap: 8px !important;
-  background: #fbfcfe !important;
+  background: var(--v3-inset) !important;
 }
 
 .sample,
 .sample-card,
 .samples .item {
-  border: 1px solid #dfe6ef !important;
+  border: 1px solid var(--v3-border) !important;
   border-radius: 9px !important;
   overflow: hidden !important;
-  background: #eef2f7 !important;
+  background: var(--v3-panel-solid) !important;
   box-shadow: none !important;
   transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
@@ -2423,8 +2524,8 @@ header,
 .sample-card:hover,
 .samples .item:hover {
   transform: translateY(-2px);
-  border-color: #aac4eb !important;
-  box-shadow: 0 7px 18px rgba(31,56,88,.10) !important;
+  border-color: var(--v3-primary) !important;
+  box-shadow: var(--v3-shadow-hover) !important;
 }
 
 .sample .cap,
@@ -2446,8 +2547,8 @@ select {
   appearance: none !important;
   -webkit-appearance: none !important;
   background-image:
-    linear-gradient(45deg, transparent 50%, #8b9aaf 50%),
-    linear-gradient(135deg, #8b9aaf 50%, transparent 50%) !important;
+    linear-gradient(45deg, transparent 50%, var(--v3-text-3) 50%),
+    linear-gradient(135deg, var(--v3-text-3) 50%, transparent 50%) !important;
   background-position:
     calc(100% - 13px) 50%,
     calc(100% - 9px) 50% !important;
@@ -2460,13 +2561,13 @@ select {
 .empty,
 .placeholder,
 .empty-state {
-  color: #9aa7b8 !important;
+  color: var(--v3-text-3) !important;
 }
 
 /* ---------- 让下方两个区域在视觉上形成“左右双面板” ---------- */
 .hist,
 .samples-wrap {
-  box-shadow: 0 5px 20px rgba(31,56,88,.045) !important;
+  box-shadow: var(--v3-shadow) !important;
 }
 
 /* ---------- 桌面矮屏：进一步压缩但不产生内部滚动 ---------- */
