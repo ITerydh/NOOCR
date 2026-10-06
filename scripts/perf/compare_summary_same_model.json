@@ -6,51 +6,51 @@
   "tiers": {
     "ppocrv5": {
       "tier": "ppocrv5",
-      "onnxocr_ms": 1679.0,
-      "noocr_ms": 395.3,
-      "speedup_median": 4.25,
-      "speedup_total": 4.25,
+      "onnxocr_ms": 1569.8,
+      "noocr_ms": 271.7,
+      "speedup_median": 5.78,
+      "speedup_total": 5.78,
       "lines": {
         "OnnxOCR": 296,
         "NOOCR": 296
       },
-      "weights": ""
+      "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared"
     },
     "ppocrv6-tiny": {
       "tier": "ppocrv6-tiny",
-      "onnxocr_ms": 1054.2,
-      "noocr_ms": 234.7,
-      "speedup_median": 4.49,
-      "speedup_total": 4.49,
+      "onnxocr_ms": 1064.3,
+      "noocr_ms": 221.6,
+      "speedup_median": 4.8,
+      "speedup_total": 4.8,
       "lines": {
         "OnnxOCR": 289,
         "NOOCR": 295
       },
-      "weights": ""
+      "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared"
     },
     "ppocrv6-small": {
       "tier": "ppocrv6-small",
-      "onnxocr_ms": 1522.1,
-      "noocr_ms": 377.1,
-      "speedup_median": 4.04,
-      "speedup_total": 4.04,
+      "onnxocr_ms": 1488.5,
+      "noocr_ms": 338.7,
+      "speedup_median": 4.39,
+      "speedup_total": 4.39,
       "lines": {
         "OnnxOCR": 289,
         "NOOCR": 285
       },
-      "weights": ""
+      "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared"
     },
     "ppocrv6-medium": {
       "tier": "ppocrv6-medium",
-      "onnxocr_ms": 2605.9,
-      "noocr_ms": 389.0,
-      "speedup_median": 6.7,
-      "speedup_total": 6.7,
+      "onnxocr_ms": 2484.7,
+      "noocr_ms": 374.1,
+      "speedup_median": 6.64,
+      "speedup_total": 6.64,
       "lines": {
         "OnnxOCR": 288,
         "NOOCR": 288
       },
-      "weights": ""
+      "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared"
     }
   }
 }

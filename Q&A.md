@@ -185,9 +185,14 @@ python -m noocr 论文.pdf --dpi 300 --max-pages 10
 - 提高输入图片分辨率；
 - 确认方向纠正没有被误判（倾斜角度识别错会连带拉低置信度）。
 
-### 想要最高精度，但medium 好像没比 small 快
+### 想要最高精度，但 medium 比 small 慢
 
-正常。`ppocrv6-medium` 参数是 small 的 4 倍，但检测阶段的分辨率策略按版面特征选，不同图上耗时差距很小——8 张示例图实测 medium 3163ms、small 3399ms，medium 反而略快。选它不会牺牲速度。
+正常。`ppocrv6-medium` 参数是 small 的 4 倍，精度最高（加权置信度 0.981，
+small 为 0.973），代价是耗时更长：8 张示例图实测 medium 2993ms、small 2710ms，
+慢约 10%。想要更快就用 small，版面复杂、精度优先再上 medium。
+
+（早期版本曾给出「medium 反而比 small 快」的结论，那是测量方法有问题：
+预热轮数不足且解码没计入耗时。修正后数据见上。）
 
 ---
 

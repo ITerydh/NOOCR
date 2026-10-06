@@ -198,105 +198,106 @@ curl -X POST http://127.0.0.1:8000/api/ocr \
 
 ## Performance
 
-RTX 4070 Ti SUPER + `ppocrv6-small`, the same 8 sample images as the comparison table above, image decoding included, each device in its own process, 1 warm-up round then the mean of 3 rounds:
+RTX 4070 Ti SUPER + `ppocrv6-small`, the same 8 sample images as the comparison table above, image decoding included, each device in its own process, 3 warm-up rounds then the mean of 10 rounds:
 
 | Image | Lines | CPU | GPU | Speedup |
 |---|---|---|---|---|
-| Comparison table | 73 | 9139 ms | **485 ms** | 19x |
-| Primary school exam | 65 | 2000 ms | **759 ms** | 2.6x |
-| ID card | 11 | 1649 ms | **266 ms** | 6.2x |
-| Lab report | 69 | 1322 ms | **379 ms** | 3.5x |
-| Product spec | 16 | 1750 ms | **267 ms** | 6.6x |
-| Bank statement | 31 | 1591 ms | **355 ms** | 4.5x |
-| Vertical plaque | 2 | 1317 ms | **98 ms** | 13.5x |
-| Train ticket | 19 | 1672 ms | **301 ms** | 5.6x |
-| **Total** | — | **20440 ms** | **2909 ms** | **7.0x** |
+| Table | 73 | 1380ms | 446ms | 3.1x |
+| Exam sheet | 65 | 1932ms | 711ms | 2.7x |
+| ID card | 11 | 1573ms | 248ms | 6.3x |
+| Lab report | 69 | 1253ms | 355ms | 3.5x |
+| Spec sheet | 16 | 1517ms | 262ms | 5.8x |
+| Statement | 31 | 1608ms | 349ms | 4.6x |
+| Plaque | 2 | 1265ms | 98ms | 13.0x |
+| Train ticket | 19 | 1696ms | 295ms | 5.8x |
+| **Total** | — | **12223 ms** | **2763 ms** | **4.4x** |
 
-The speedup has little to do with line count — layout complexity dominates. `Comparison table` is dense small text and post-processing alone takes 9 seconds on CPU; `Vertical plaque` has only 2 lines but a large canvas, and needs just 98ms on GPU. Dense layouts actually suffer more on CPU.
+The speedup has little to do with line count — layout complexity dominates. `Plaque` has only 2 lines but a large canvas: fixed overhead alone accounts for 1.2 seconds on CPU while GPU needs just 98ms, hence 13x. Dense small text in `Table` manages only 3.1x — its post-processing (perspective transforms, text-line merging) is pure Python work that the GPU cannot help with.
 
-The first GPU request includes about 2.4s of model loading and CUDA kernel compilation; afterwards it stabilizes at 0.1-0.8s. Reproduce with:
+The first GPU request includes roughly 2.4s of model loading and CUDA kernel compilation; after that it settles at 0.1-0.7s. Reproduce:
 
 ```bash
-python scripts/perf/bench_device.py cpu 3   # CPU baseline
-python scripts/perf/bench_device.py cuda 3  # GPU baseline
+python scripts/perf/bench_device.py cpu 10   > device_cpu.json
+python scripts/perf/bench_device.py cuda 10  > device_cuda.json
+python scripts/sync_readme_tables.py          # write results back into the README
 ```
 
 Run the two devices in separate processes — measuring both in one process makes the CPU thread configuration interfere with itself, and the resulting speedup means nothing.
 
 ### Measured against OnnxOCR
 
-**Four tiers, both engines reading the very same weight files** (det / rec / dictionary verified byte-identical by MD5), same RTX 4070 Ti SUPER, both on ONNX Runtime 1.23.2, direction classification enabled on both sides, image decoding included, 1 warm-up round then the mean of 10 rounds per image:
+**Four tiers, both engines reading the very same weight files** (det / rec / dictionary verified byte-identical by MD5), same RTX 4070 Ti SUPER, both on ONNX Runtime 1.23.2, direction classification enabled on both sides, image decoding included, 3 warm-up rounds then the mean of 10 rounds per image:
 
 <details open>
 <summary><b>PP-OCRv5</b>（点击展开）</summary>
 
-| Sample | Resolution | OnnxOCR<br>PP-OCRv5 | NOOCR<br>PP-OCRv5 | Ratio | Lines |
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv5 | NOOCR<br>PP-OCRv5 | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 3691 ms | **453 ms** | **8.2x** | 82 / 79 |
-| `exam_chinese_primary` | 1920x2560 | 3259 ms | **1062 ms** | **3.1x** | 68 / 73 |
-| `id_card_china` | 1148x672 | 551 ms | **205 ms** | **2.7x** | 9 / 10 |
-| `medical_lab_report` | 430x267 | 2512 ms | **309 ms** | **8.1x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 778 ms | **213 ms** | **3.6x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 1376 ms | **287 ms** | **4.8x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 303 ms | **111 ms** | **2.7x** | 2 / 2 |
-| `ticket_train` | 670x510 | 961 ms | **522 ms** | **1.8x** | 19 / 17 |
-| **Mean** | — | **1679 ms** | **395 ms** | **4.25x** | 296 / 296 |
-| **Total** | — | **13432 ms** | **3162 ms** | **4.25x** | — |
+| `doc_comparison_table` | 371x293 | 2913 ms | **349 ms** | **8.3x** | 82 / 79 |
+| `exam_chinese_primary` | 1920x2560 | 3204 ms | **558 ms** | **5.7x** | 68 / 73 |
+| `id_card_china` | 1148x672 | 558 ms | **201 ms** | **2.8x** | 9 / 10 |
+| `medical_lab_report` | 430x267 | 2484 ms | **297 ms** | **8.4x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 774 ms | **206 ms** | **3.8x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1370 ms | **278 ms** | **4.9x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 299 ms | **72 ms** | **4.2x** | 2 / 2 |
+| `ticket_train` | 670x510 | 956 ms | **213 ms** | **4.5x** | 19 / 17 |
+| **均值** | — | **1570 ms** | **272 ms** | **5.78x** | 296 / 296 |
+| **合计** | — | **12558 ms** | **2173 ms** | **5.78x** | — |
 
 </details>
 <details>
 <summary><b>PP-OCRv6 tiny</b>（点击展开）</summary>
 
-| Sample | Resolution | OnnxOCR<br>PP-OCRv6 tiny | NOOCR<br>PP-OCRv6 tiny | Ratio | Lines |
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 tiny | NOOCR<br>PP-OCRv6 tiny | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 1838 ms | **311 ms** | **5.9x** | 73 / 74 |
-| `exam_chinese_primary` | 1920x2560 | 2210 ms | **477 ms** | **4.6x** | 70 / 75 |
-| `id_card_china` | 1148x672 | 374 ms | **171 ms** | **2.2x** | 9 / 9 |
-| `medical_lab_report` | 430x267 | 1729 ms | **264 ms** | **6.5x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 527 ms | **146 ms** | **3.6x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 932 ms | **257 ms** | **3.6x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 191 ms | **64 ms** | **3.0x** | 2 / 2 |
-| `ticket_train` | 670x510 | 631 ms | **188 ms** | **3.4x** | 19 / 20 |
-| **Mean** | — | **1054 ms** | **235 ms** | **4.49x** | 289 / 295 |
-| **Total** | — | **8433 ms** | **1878 ms** | **4.49x** | — |
+| `doc_comparison_table` | 371x293 | 1851 ms | **303 ms** | **6.1x** | 73 / 74 |
+| `exam_chinese_primary` | 1920x2560 | 2206 ms | **458 ms** | **4.8x** | 70 / 75 |
+| `id_card_china` | 1148x672 | 390 ms | **160 ms** | **2.4x** | 9 / 9 |
+| `medical_lab_report` | 430x267 | 1721 ms | **244 ms** | **7.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 542 ms | **138 ms** | **3.9x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 952 ms | **235 ms** | **4.1x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 196 ms | **63 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 657 ms | **172 ms** | **3.8x** | 19 / 20 |
+| **均值** | — | **1064 ms** | **222 ms** | **4.80x** | 289 / 295 |
+| **合计** | — | **8514 ms** | **1773 ms** | **4.80x** | — |
 
 </details>
 <details>
 <summary><b>PP-OCRv6 small</b>（点击展开）</summary>
 
-| Sample | Resolution | OnnxOCR<br>PP-OCRv6 small | NOOCR<br>PP-OCRv6 small | Ratio | Lines |
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 small | NOOCR<br>PP-OCRv6 small | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 2786 ms | **457 ms** | **6.1x** | 71 / 73 |
-| `exam_chinese_primary` | 1920x2560 | 2964 ms | **921 ms** | **3.2x** | 71 / 65 |
-| `id_card_china` | 1148x672 | 555 ms | **257 ms** | **2.2x** | 10 / 11 |
-| `medical_lab_report` | 430x267 | 2501 ms | **363 ms** | **6.9x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 768 ms | **266 ms** | **2.9x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 1345 ms | **352 ms** | **3.8x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 308 ms | **100 ms** | **3.1x** | 2 / 2 |
-| `ticket_train` | 670x510 | 949 ms | **300 ms** | **3.2x** | 19 / 19 |
-| **Mean** | — | **1522 ms** | **377 ms** | **4.04x** | 289 / 285 |
-| **Total** | — | **12177 ms** | **3016 ms** | **4.04x** | — |
+| `doc_comparison_table` | 371x293 | 2661 ms | **437 ms** | **6.1x** | 71 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 2930 ms | **696 ms** | **4.2x** | 71 / 65 |
+| `id_card_china` | 1148x672 | 567 ms | **245 ms** | **2.3x** | 10 / 11 |
+| `medical_lab_report` | 430x267 | 2463 ms | **353 ms** | **7.0x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 750 ms | **254 ms** | **3.0x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1316 ms | **341 ms** | **3.9x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 292 ms | **95 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 928 ms | **288 ms** | **3.2x** | 19 / 19 |
+| **均值** | — | **1488 ms** | **339 ms** | **4.39x** | 289 / 285 |
+| **合计** | — | **11908 ms** | **2710 ms** | **4.39x** | — |
 
 </details>
 <details>
 <summary><b>PP-OCRv6 medium</b>（点击展开）</summary>
 
-| Sample | Resolution | OnnxOCR<br>PP-OCRv6 medium | NOOCR<br>PP-OCRv6 medium | Ratio | Lines |
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 medium | NOOCR<br>PP-OCRv6 medium | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 4535 ms | **478 ms** | **9.5x** | 74 / 73 |
-| `exam_chinese_primary` | 1920x2560 | 5175 ms | **729 ms** | **7.1x** | 64 / 66 |
-| `id_card_china` | 1148x672 | 1003 ms | **245 ms** | **4.1x** | 12 / 11 |
-| `medical_lab_report` | 430x267 | 4202 ms | **462 ms** | **9.1x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 1326 ms | **299 ms** | **4.4x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 2304 ms | **417 ms** | **5.5x** | 32 / 32 |
-| `scene_vertical_plaque` | 720x1150 | 634 ms | **115 ms** | **5.5x** | 2 / 2 |
-| `ticket_train` | 670x510 | 1669 ms | **366 ms** | **4.6x** | 19 / 19 |
-| **Mean** | — | **2606 ms** | **389 ms** | **6.70x** | 288 / 288 |
-| **Total** | — | **20847 ms** | **3112 ms** | **6.70x** | — |
+| `doc_comparison_table` | 371x293 | 4343 ms | **468 ms** | **9.3x** | 74 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 4791 ms | **713 ms** | **6.7x** | 64 / 66 |
+| `id_card_china` | 1148x672 | 956 ms | **240 ms** | **4.0x** | 12 / 11 |
+| `medical_lab_report` | 430x267 | 4050 ms | **447 ms** | **9.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 1286 ms | **290 ms** | **4.4x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 2227 ms | **386 ms** | **5.8x** | 32 / 32 |
+| `scene_vertical_plaque` | 720x1150 | 603 ms | **110 ms** | **5.5x** | 2 / 2 |
+| `ticket_train` | 670x510 | 1621 ms | **338 ms** | **4.8x** | 19 / 19 |
+| **均值** | — | **2485 ms** | **374 ms** | **6.64x** | 288 / 288 |
+| **合计** | — | **19877 ms** | **2993 ms** | **6.64x** | — |
 
 </details>
 
-**The larger the model, the larger the gap.** 4.25x on v5, 6.70x on v6 medium — OnnxOCR makes no trade-off on input resolution and memory arena for big models and simply runs everything at maximum configuration; NOOCR picks resolution by shape characteristics and turns off arena replanning, so the bigger the model the more that saves.
+**The larger the model, the larger the gap.** 5.78x on v5, 6.64x on v6 medium — OnnxOCR makes no trade-off on input resolution and memory arena for big models and simply runs everything at maximum configuration; NOOCR picks resolution by shape characteristics and turns off arena replanning, so the bigger the model the more that saves.
 
 Line counts match closely across all four tiers (v5 296/296, medium 288/288), so preprocessing is on equal footing and the gap comes from the implementation, not from "who reads more words". It comes mainly from three places: det input resolution and memory arena policy (the set of shapes is finite and discrete, so disabling `dynamic_shape` lets the arena work and speeds up det by ~32%), rec dictionary trimming, and session reuse.
 
@@ -306,14 +307,16 @@ Reproduce with `scripts/perf/compare_onnxocr.md` (requires a separate OnnxOCR ch
 
 | Backend | Size | Relative speed | Weighted confidence | Use for |
 |---|---|---|---|---|
-| `ppocrv6-tiny` | 6.6MB | **1.95x** | 0.956 | Edge devices, batch work |
-| `ppocrv6-medium` | 132.8MB | 1.11x | **0.981** | Complex layouts, best accuracy |
-| `ppocrv6-small` | 30.3MB | 1.03x | 0.973 | Default |
+| `ppocrv6-tiny` | 6.6MB | **1.23x** | 0.956 | Edge devices, batch work |
 | `ppocrv5` | 21.1MB | 1.00x | 0.928 | Legacy compatibility |
+| `ppocrv6-small` | 30.3MB | 0.80x | 0.973 | Default |
+| `ppocrv6-medium` | 132.8MB | 0.73x | **0.981** | Complex layouts, best accuracy |
 
-RTX 4070 Ti SUPER, 8 sample images, 1 warm-up round then median of 5, relative speed based on `ppocrv5`; confidence weighted by character count (`scripts/perf/bench_tiers.py`, each tier measured in its own process).
+RTX 4070 Ti SUPER, 8 sample images, 3 warm-up rounds then mean of 10 (image decoding included), relative speed based on `ppocrv5`; timings come from the **same measurement run** as the comparison table above. Confidence weighted by character count (`scripts/perf/bench_tiers.py`, each tier measured in its own process).
 
-All four v6 tiers beat v5 on confidence, and the **medium tier is even faster than small** — despite more parameters, its det resolution strategy keeps the time down, 7% below small.
+All four v6 tiers beat v5 on confidence, but **only tiny is faster than v5**. small and medium are both slower, and what you get for the extra time is accuracy: medium is about 10% slower than small for 0.981 confidence versus 0.973 (v5 sits at 0.928).
+
+> Pick tiny for speed, small for balance, medium for accuracy. Reach for v5 only when you need legacy compatibility.
 
 ## Project structure
 
@@ -342,6 +345,8 @@ scripts/
 ├─ publish_weights.py      weight publishing script
 ├─ perf/                   performance benchmarks and A/B scripts
 │  ├─ bench_device.py      CPU / GPU baseline
+│  ├─ bench_noocr.py       single-engine benchmark
+│  ├─ compare_make_table.py build the comparison table from artifacts
 │  ├─ bench_tiers.py       per-tier relative speed and confidence
 │  ├─ compare_onnxocr.md   how to reproduce the OnnxOCR comparison
 │  └─ ab_*.py              arena / cuDNN / tier A/B

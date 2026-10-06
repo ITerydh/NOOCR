@@ -4,12 +4,12 @@
 
 - CPU 侧与 GPU 侧各跑**独立进程**——同一进程里先跑 CPU 再跑 GPU 会让
   CPU 线程数配置互相干扰，且长时间连续负载会触发 CPU 降频。
-- 每档1 轮预热，测量轮数由命令行给出。
+- 每档 3 轮预热、10 轮测量取均值（与主对比表同口径）。
 
 用法::
 
-    python scripts/perf/bench_device.py cpu 3 > device_cpu.json
-    python scripts/perf/bench_device.py cuda 3 > device_cuda.json
+    python scripts/perf/bench_device.py cpu 10 > device_cpu.json
+    python scripts/perf/bench_device.py cuda 10 > device_cuda.json
     python scripts/perf/bench_device_merge.py     # 合成表格
 """
 
@@ -26,8 +26,10 @@ sys.path.insert(0, str(_HERE.parent.parent))
 
 IMAGES = _HERE / "images"
 
-WARMUP = 1
-REPS = 3
+#: 预热 3 轮，测量 10 轮取均值。与对比表同一口径（见 bench_noocr）。
+#: CPU 侧单次耗时本身在 1.3-2s 量级，轮数少了均值自身就不稳。
+WARMUP = 3
+REPS = 10
 BACKEND = "ppocrv6-small"
 
 

@@ -2,59 +2,62 @@
   "engine": "NOOCR",
   "backend": "ppocrv5",
   "device": "cuda",
-  "boot_ms": 15.3,
-  "avg_ms": 395.3,
+  "boot_ms": 13.3,
+  "avg_ms": 271.7,
   "total_lines": 296,
   "images": 8,
+  "warmup": 3,
+  "rounds": 10,
+  "stat": "mean",
+  "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared",
   "per_image": {
     "doc_comparison_table.jpg": {
-      "avg_ms": 452.7,
+      "avg_ms": 349.2,
       "lines": 79,
-      "min_ms": 351.6,
-      "max_ms": 761.6
+      "min_ms": 344.7,
+      "max_ms": 356.3
     },
     "exam_chinese_primary.jpg": {
-      "avg_ms": 1062.2,
+      "avg_ms": 557.5,
       "lines": 73,
-      "min_ms": 652.6,
-      "max_ms": 1201.1
+      "min_ms": 550.8,
+      "max_ms": 564.3
     },
     "id_card_china.jpg": {
-      "avg_ms": 205.3,
+      "avg_ms": 201.1,
       "lines": 10,
-      "min_ms": 199.6,
-      "max_ms": 209.8
+      "min_ms": 197.2,
+      "max_ms": 206.7
     },
     "medical_lab_report.jpg": {
-      "avg_ms": 308.9,
+      "avg_ms": 296.7,
       "lines": 69,
-      "min_ms": 303.2,
-      "max_ms": 314.8
+      "min_ms": 293.0,
+      "max_ms": 300.2
     },
     "product_spec_sheet.jpg": {
-      "avg_ms": 213.3,
+      "avg_ms": 205.9,
       "lines": 16,
-      "min_ms": 207.2,
-      "max_ms": 226.6
+      "min_ms": 200.7,
+      "max_ms": 211.8
     },
     "receipt_bank_statement.jpg": {
-      "avg_ms": 287.2,
+      "avg_ms": 278.1,
       "lines": 30,
-      "min_ms": 281.8,
-      "max_ms": 290.6
+      "min_ms": 271.4,
+      "max_ms": 283.4
     },
     "scene_vertical_plaque.jpg": {
-      "avg_ms": 111.0,
+      "avg_ms": 71.6,
       "lines": 2,
-      "min_ms": 74.8,
-      "max_ms": 156.8
+      "min_ms": 69.8,
+      "max_ms": 74.4
     },
     "ticket_train.jpg": {
-      "avg_ms": 521.6,
+      "avg_ms": 213.2,
       "lines": 17,
-      "min_ms": 439.4,
-      "max_ms": 622.3
+      "min_ms": 204.5,
+      "max_ms": 220.3
     }
-  },
-  "models_root": "C:\\Users\\iterhui\\Desktop\\bench\\weights_shared"
+  }
 }

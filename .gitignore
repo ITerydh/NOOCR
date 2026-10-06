@@ -86,6 +86,8 @@ _bench_*.json
 .genie/
 
 # 性能对比工作区（OnnxOCR 检出与共用权重目录，见 scripts/perf/compare_onnxocr.md）
-scripts/perf/OnnxOCR/
-scripts/perf/weights_shared/
-scripts/perf/onnxocr-env/
+# 不带尾部斜杠：Windows 上习惯用 mklink 建软链把环境接进 perf/ 目录，
+# 带斜杠的规则只匹配真实目录，软链会被当成文件提交进去。
+scripts/perf/OnnxOCR
+scripts/perf/weights_shared
+scripts/perf/onnxocr-env

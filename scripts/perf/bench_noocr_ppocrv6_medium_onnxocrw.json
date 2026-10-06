@@ -2,59 +2,62 @@
   "engine": "NOOCR",
   "backend": "ppocrv6-medium",
   "device": "cuda",
-  "boot_ms": 22.6,
-  "avg_ms": 389.0,
+  "boot_ms": 13.0,
+  "avg_ms": 374.1,
   "total_lines": 288,
   "images": 8,
+  "warmup": 3,
+  "rounds": 10,
+  "stat": "mean",
+  "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\scripts\\perf\\weights_shared",
   "per_image": {
     "doc_comparison_table.jpg": {
-      "avg_ms": 478.4,
+      "avg_ms": 468.1,
       "lines": 73,
-      "min_ms": 472.9,
-      "max_ms": 486.8
+      "min_ms": 458.9,
+      "max_ms": 473.8
     },
     "exam_chinese_primary.jpg": {
-      "avg_ms": 728.8,
+      "avg_ms": 713.0,
       "lines": 66,
-      "min_ms": 721.6,
-      "max_ms": 742.0
+      "min_ms": 705.5,
+      "max_ms": 730.3
     },
     "id_card_china.jpg": {
-      "avg_ms": 244.9,
+      "avg_ms": 240.3,
       "lines": 11,
-      "min_ms": 239.1,
-      "max_ms": 250.7
+      "min_ms": 236.9,
+      "max_ms": 243.7
     },
     "medical_lab_report.jpg": {
-      "avg_ms": 461.5,
+      "avg_ms": 447.2,
       "lines": 69,
-      "min_ms": 446.6,
-      "max_ms": 487.2
+      "min_ms": 442.2,
+      "max_ms": 459.1
     },
     "product_spec_sheet.jpg": {
-      "avg_ms": 299.0,
+      "avg_ms": 289.9,
       "lines": 16,
-      "min_ms": 293.2,
-      "max_ms": 304.3
+      "min_ms": 286.8,
+      "max_ms": 295.5
     },
     "receipt_bank_statement.jpg": {
-      "avg_ms": 417.4,
+      "avg_ms": 386.0,
       "lines": 32,
-      "min_ms": 402.7,
-      "max_ms": 452.1
+      "min_ms": 380.5,
+      "max_ms": 391.9
     },
     "scene_vertical_plaque.jpg": {
-      "avg_ms": 115.4,
+      "avg_ms": 110.4,
       "lines": 2,
-      "min_ms": 113.0,
-      "max_ms": 118.4
+      "min_ms": 108.4,
+      "max_ms": 114.4
     },
     "ticket_train.jpg": {
-      "avg_ms": 366.5,
+      "avg_ms": 337.7,
       "lines": 19,
-      "min_ms": 350.0,
-      "max_ms": 449.9
+      "min_ms": 332.9,
+      "max_ms": 343.7
     }
-  },
-  "models_root": "C:\\Users\\iterhui\\Desktop\\bench\\weights_v6_onnxocr"
+  }
 }

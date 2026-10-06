@@ -35,13 +35,14 @@ IMAGES = _HERE / "images"
 #: **两侧共用的权重根目录**
 SHARED = _HERE / "weights_shared"
 
-#: 预热轮数。只留 1 轮——含 CUDA kernel 编译与首次内存分配，
-#: 多轮预热会把机器状态波动一并抹平，反而看不出真实抖动。
-WARMUP = 1
+#: 预热轮数。3 轮——第一轮要付CUDA kernel 编译与首次内存分配，
+#: 第二轮还在填充内存池、触发 arena 重规划，实测单轮预热后的第一组
+#: 数字明显高于后续（v5 首样本 4951ms、末样本 10135ms）。3 轮足以让
+#: 机器进入稳态，再多的预热只是浪费时间。
+WARMUP = 3
 
-#: 测量轮数。10 轮取**均值**：单次抖动可到 ±40%（本机实测 v5 首样本
-#: 4951ms、末样本 10135ms），中位数会把这个方差藏起来，均值才反映
-#: 真实期望耗时。轮数够多，均值自身也稳。
+#: 测量轮数。10 轮取**均值**：单次抖动可到 ±40%，中位数会把这个方差
+#: 藏起来，均值才反映真实期望耗时。轮数够多，均值自身也稳。
 ROUNDS = 10
 
 
@@ -171,6 +172,10 @@ def main() -> int:
         "avg_ms": round(avg_all, 1),
         "total_lines": total_lines,
         "images": len(imgs),
+        # 口径写进产物：数字离开这个文件后仍能自证是怎么测出来的
+        "warmup": WARMUP,
+        "rounds": ROUNDS,
+        "stat": "mean",
         "weights": str(SHARED),
         "per_image": per_img,
     }

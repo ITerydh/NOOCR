@@ -17,6 +17,12 @@
     for t in ppocrv5 ppocrv6-tiny ppocrv6-small ppocrv6-medium; do \\
         python scripts/perf/bench_tiers.py $t cuda; done
 
+**同档位也要至少测两遍再采信。** 本机实测 medium 连续三次跑出
+3751 / 5223 / 5035ms——而三次的 GPU 时钟(2610MHz)、温度(49-50°C)、
+功耗(41W)完全一致，**不是 GPU 热降频**，是别的负载在抢机器。所以
+表里的数字要么来自与主对比表同源的那批产物（``bench_noocr_*.json``），
+要么重复测到两次结果接近（差 <5%）才用；单次结果不做数。
+
 环境变量 ``NOOCR_MODELS_DIR`` 可切换权重根目录。
 """
 
@@ -36,10 +42,10 @@ IMAGES = _HERE / "images"
 #: 相对速度的基准档位
 BASE = "ppocrv5"
 
-#: 预热 1 轮、测量 5 轮取中位数——每档独立进程后抖动很小，
-#: 中位数足够稳；档位表看的是量级关系，不追求小数点后一位。
-WARMUP = 1
-REPS = 5
+#: 预热 3 轮、测量 10 轮取均值——与对比表同一口径。
+#: 加权置信度必须用同一批识别结果算，所以每档的测量结果直接复用。
+WARMUP = 3
+REPS = 10
 
 
 def measure(tier: str, device: str) -> dict:
@@ -58,17 +64,21 @@ def measure(tier: str, device: str) -> dict:
     w_sum = w_conf = 0.0
     lines = 0
     for p in imgs:
-        # 每轮重新 load_document：解码计入耗时，与主对比表同口径。
-        doc = load_document(str(p))
-        img = next(iter(doc.images))
-        for _ in range(WARMUP):
-            be.recognize_image(img, page_index=0)
-        ts = []
-        for _ in range(REPS):
+        # **解码必须计入每轮耗时**，否则与主对比表口径不一致。
+        # 之前的写法把 load_document 提到计时外，只测 recognize_image，
+        # 注释却写着「解码计入耗时」——注释与代码相反，表一旦混用就出错。
+        # images 是生成器只能消费一次，所以每轮都重新 load_document。
+        timings = []
+        pr = None
+        for i in range(WARMUP + REPS):
             t0 = time.perf_counter()
+            doc = load_document(str(p))
+            img = next(iter(doc.images))
             pr = be.recognize_image(img, page_index=0)
-            ts.append((time.perf_counter() - t0) * 1000)
-        total += statistics.median(ts)
+            dt = (time.perf_counter() - t0) * 1000
+            if i >= WARMUP:
+                timings.append(dt)
+        total += statistics.mean(timings)
         for ln in pr.lines:
             n = max(1, len(ln.text))
             w_sum += n
@@ -82,6 +92,9 @@ def measure(tier: str, device: str) -> dict:
         "avg_ms": round(total / len(imgs), 1),
         "weighted_confidence": round(w_conf / w_sum, 4) if w_sum else 0.0,
         "lines": lines,
+        "warmup": WARMUP,
+        "reps": REPS,
+        "stat": "mean",
         "weights": str(MODELS_ROOT),
     }
 

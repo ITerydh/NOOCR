@@ -1118,6 +1118,7 @@ async function boot() {
     $("status").textContent = "服务正常";
     $("backend").innerHTML = b.items.map(x => {
       const mb = ((x.det_mb || 0) + (x.rec_mb || 0)).toFixed(1);
+      backendLabels[x.name] = deriveShortLabel(x.label, x.name);
       return `<option value="${x.name}"${x.default ? " selected" : ""}>` +
         `${x.label || x.name} · ${mb}MB</option>`;
     }).join("");
@@ -1366,12 +1367,26 @@ async function run() {
 }
 
 /* 后端注册名 -> 界面短标签。统计条与历史记录共用，
-   避免两处对同一个名字给出不同写法。 */
+   避免两处对同一个名字给出不同写法。
+
+   标签由 boot() 从 /api/backends 拉到的 label 生成（"PP-OCRv6 medium"
+   -> "v6 medium"），不在这里硬编码映射表——加新档位时后端注册表
+   已经改过了，前端这张表若不同步就会漏 showing v6-medium 这种
+   半截名字。之前加 medium 就漏过一次。 */
+let backendLabels = {};
+
 function shortBackend(name) {
   const raw = String(name || "");
-  return {
-    "ppocrv6-small": "v6 small", "ppocrv6-tiny": "v6 tiny", "ppocrv5": "v5",
-  }[raw] || raw.replace(/^ppocr/, "") || "—";
+  if (backendLabels[raw]) return backendLabels[raw];
+  return raw.replace(/^ppocr/, "") || "—";
+}
+
+/* 从后端 label 推短标签：PP-OCRv6 medium -> v6 medium，
+   PP-OCRv5 -> v5。统计条宽度有限，全名放不下。 */
+function deriveShortLabel(label, name) {
+  const m = /^PP-OCRv(\d+)(?:\s+(.+))?$/.exec(String(label || ""));
+  if (!m) return name;
+  return `v${m[1]}${m[2] ? " " + m[2].toLowerCase() : ""}`;
 }
 
 /* 统计条分两组渲染：核心 6 项平铺，耗时明细另起一行。

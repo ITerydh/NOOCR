@@ -197,50 +197,51 @@ curl -X POST http://127.0.0.1:8000/api/ocr \
 
 ## 性能
 
-RTX 4070 Ti SUPER + `ppocrv6-small`，与性能对比表同一批 8 张图、含图片解码，每档独立进程、1 轮预热后取 3 轮均值：
+RTX 4070 Ti SUPER + `ppocrv6-small`，与性能对比表同一批 8 张图、含图片解码，每档独立进程、3 轮预热后取 10 轮均值：
 
 | 图片 | 行数 | CPU | GPU | 加速比 |
 |---|---|---|---|---|
-| 对比表格 | 73 | 9139 ms | **485 ms** | 19x |
-| 小学试卷 | 65 | 2000 ms | **759 ms** | 2.6x |
-| 身份证 | 11 | 1649 ms | **266 ms** | 6.2x |
-| 化验单 | 69 | 1322 ms | **379 ms** | 3.5x |
-| 规格书 | 16 | 1750 ms | **267 ms** | 6.6x |
-| 银行流水 | 31 | 1591 ms | **355 ms** | 4.5x |
-| 竖式牌匾 | 2 | 1317 ms | **98 ms** | 13.5x |
-| 火车票 | 19 | 1672 ms | **301 ms** | 5.6x |
-| **合计** | — | **20440 ms** | **2909 ms** | **7.0x** |
+| 对比表格 | 73 | 1380 ms | **446 ms** | 3.1x |
+| 小学试卷 | 65 | 1932 ms | **711 ms** | 2.7x |
+| 身份证 | 11 | 1573 ms | **248 ms** | 6.3x |
+| 化验单 | 69 | 1253 ms | **355 ms** | 3.5x |
+| 规格书 | 16 | 1517 ms | **262 ms** | 5.8x |
+| 银行流水 | 31 | 1608 ms | **349 ms** | 4.6x |
+| 竖式牌匾 | 2 | 1265 ms | **98 ms** | 13.0x |
+| 火车票 | 19 | 1696 ms | **295 ms** | 5.8x |
+| **合计** | — | **12223 ms** | **2763 ms** | **4.4x** |
 
 加速比与「行数多少」关系不大，主要看版面复杂度——`对比表格` 是密集小字，CPU 上光后处理就占了 9 秒；`竖式牌匾` 只有 2 行但图大，GPU 上只要 98ms。CPU 上密集版面反而更吃亏。
 
 GPU 侧首次请求含约 2.4s 的模型加载与 CUDA kernel 编译，之后稳定在 0.1-0.8s。复现：
 
 ```bash
-python scripts/perf/bench_device.py cpu 3   # CPU 基线
-python scripts/perf/bench_device.py cuda 3  # GPU 基线
+python scripts/perf/bench_device.py cpu 10   > device_cpu.json
+python scripts/perf/bench_device.py cuda 10  > device_cuda.json
+python scripts/sync_readme_tables.py          # 把结果写回 README
 ```
 
 两个 device 要分开跑——同一进程里连续跑会让 CPU 线程配置互相干扰，测出来的加速比没有意义。
 
 ### 与 OnnxOCR 实测对比
 
-**四个档位、两侧跑同一份权重文件**（det / rec / 字典经 MD5 校验逐字节一致）、同一块 RTX 4070 Ti SUPER、同为 ONNX Runtime 1.23.2，两侧都开启方向分类、含图片解码，每图 1 轮预热后取 10 轮均值：
+**四个档位、两侧跑同一份权重文件**（det / rec / 字典经 MD5 校验逐字节一致）、同一块 RTX 4070 Ti SUPER、同为 ONNX Runtime 1.23.2，两侧都开启方向分类、含图片解码，每图 3 轮预热后取 10 轮均值：
 
 <details open>
 <summary><b>PP-OCRv5</b>（点击展开）</summary>
 
 | 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv5 | NOOCR<br>PP-OCRv5 | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 3691 ms | **453 ms** | **8.2x** | 82 / 79 |
-| `exam_chinese_primary` | 1920x2560 | 3259 ms | **1062 ms** | **3.1x** | 68 / 73 |
-| `id_card_china` | 1148x672 | 551 ms | **205 ms** | **2.7x** | 9 / 10 |
-| `medical_lab_report` | 430x267 | 2512 ms | **309 ms** | **8.1x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 778 ms | **213 ms** | **3.6x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 1376 ms | **287 ms** | **4.8x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 303 ms | **111 ms** | **2.7x** | 2 / 2 |
-| `ticket_train` | 670x510 | 961 ms | **522 ms** | **1.8x** | 19 / 17 |
-| **均值** | — | **1679 ms** | **395 ms** | **4.25x** | 296 / 296 |
-| **合计** | — | **13432 ms** | **3162 ms** | **4.25x** | — |
+| `doc_comparison_table` | 371x293 | 2913 ms | **349 ms** | **8.3x** | 82 / 79 |
+| `exam_chinese_primary` | 1920x2560 | 3204 ms | **558 ms** | **5.7x** | 68 / 73 |
+| `id_card_china` | 1148x672 | 558 ms | **201 ms** | **2.8x** | 9 / 10 |
+| `medical_lab_report` | 430x267 | 2484 ms | **297 ms** | **8.4x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 774 ms | **206 ms** | **3.8x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1370 ms | **278 ms** | **4.9x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 299 ms | **72 ms** | **4.2x** | 2 / 2 |
+| `ticket_train` | 670x510 | 956 ms | **213 ms** | **4.5x** | 19 / 17 |
+| **均值** | — | **1570 ms** | **272 ms** | **5.78x** | 296 / 296 |
+| **合计** | — | **12558 ms** | **2173 ms** | **5.78x** | — |
 
 </details>
 <details>
@@ -248,16 +249,16 @@ python scripts/perf/bench_device.py cuda 3  # GPU 基线
 
 | 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 tiny | NOOCR<br>PP-OCRv6 tiny | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 1838 ms | **311 ms** | **5.9x** | 73 / 74 |
-| `exam_chinese_primary` | 1920x2560 | 2210 ms | **477 ms** | **4.6x** | 70 / 75 |
-| `id_card_china` | 1148x672 | 374 ms | **171 ms** | **2.2x** | 9 / 9 |
-| `medical_lab_report` | 430x267 | 1729 ms | **264 ms** | **6.5x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 527 ms | **146 ms** | **3.6x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 932 ms | **257 ms** | **3.6x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 191 ms | **64 ms** | **3.0x** | 2 / 2 |
-| `ticket_train` | 670x510 | 631 ms | **188 ms** | **3.4x** | 19 / 20 |
-| **均值** | — | **1054 ms** | **235 ms** | **4.49x** | 289 / 295 |
-| **合计** | — | **8433 ms** | **1878 ms** | **4.49x** | — |
+| `doc_comparison_table` | 371x293 | 1851 ms | **303 ms** | **6.1x** | 73 / 74 |
+| `exam_chinese_primary` | 1920x2560 | 2206 ms | **458 ms** | **4.8x** | 70 / 75 |
+| `id_card_china` | 1148x672 | 390 ms | **160 ms** | **2.4x** | 9 / 9 |
+| `medical_lab_report` | 430x267 | 1721 ms | **244 ms** | **7.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 542 ms | **138 ms** | **3.9x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 952 ms | **235 ms** | **4.1x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 196 ms | **63 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 657 ms | **172 ms** | **3.8x** | 19 / 20 |
+| **均值** | — | **1064 ms** | **222 ms** | **4.80x** | 289 / 295 |
+| **合计** | — | **8514 ms** | **1773 ms** | **4.80x** | — |
 
 </details>
 <details>
@@ -265,16 +266,16 @@ python scripts/perf/bench_device.py cuda 3  # GPU 基线
 
 | 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 small | NOOCR<br>PP-OCRv6 small | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 2786 ms | **457 ms** | **6.1x** | 71 / 73 |
-| `exam_chinese_primary` | 1920x2560 | 2964 ms | **921 ms** | **3.2x** | 71 / 65 |
-| `id_card_china` | 1148x672 | 555 ms | **257 ms** | **2.2x** | 10 / 11 |
-| `medical_lab_report` | 430x267 | 2501 ms | **363 ms** | **6.9x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 768 ms | **266 ms** | **2.9x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 1345 ms | **352 ms** | **3.8x** | 31 / 30 |
-| `scene_vertical_plaque` | 720x1150 | 308 ms | **100 ms** | **3.1x** | 2 / 2 |
-| `ticket_train` | 670x510 | 949 ms | **300 ms** | **3.2x** | 19 / 19 |
-| **均值** | — | **1522 ms** | **377 ms** | **4.04x** | 289 / 285 |
-| **合计** | — | **12177 ms** | **3016 ms** | **4.04x** | — |
+| `doc_comparison_table` | 371x293 | 2661 ms | **437 ms** | **6.1x** | 71 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 2930 ms | **696 ms** | **4.2x** | 71 / 65 |
+| `id_card_china` | 1148x672 | 567 ms | **245 ms** | **2.3x** | 10 / 11 |
+| `medical_lab_report` | 430x267 | 2463 ms | **353 ms** | **7.0x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 750 ms | **254 ms** | **3.0x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1316 ms | **341 ms** | **3.9x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 292 ms | **95 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 928 ms | **288 ms** | **3.2x** | 19 / 19 |
+| **均值** | — | **1488 ms** | **339 ms** | **4.39x** | 289 / 285 |
+| **合计** | — | **11908 ms** | **2710 ms** | **4.39x** | — |
 
 </details>
 <details>
@@ -282,22 +283,22 @@ python scripts/perf/bench_device.py cuda 3  # GPU 基线
 
 | 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 medium | NOOCR<br>PP-OCRv6 medium | 倍数 | 文本行 |
 |---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 4535 ms | **478 ms** | **9.5x** | 74 / 73 |
-| `exam_chinese_primary` | 1920x2560 | 5175 ms | **729 ms** | **7.1x** | 64 / 66 |
-| `id_card_china` | 1148x672 | 1003 ms | **245 ms** | **4.1x** | 12 / 11 |
-| `medical_lab_report` | 430x267 | 4202 ms | **462 ms** | **9.1x** | 69 / 69 |
-| `product_spec_sheet` | 500x500 | 1326 ms | **299 ms** | **4.4x** | 16 / 16 |
-| `receipt_bank_statement` | 500x667 | 2304 ms | **417 ms** | **5.5x** | 32 / 32 |
-| `scene_vertical_plaque` | 720x1150 | 634 ms | **115 ms** | **5.5x** | 2 / 2 |
-| `ticket_train` | 670x510 | 1669 ms | **366 ms** | **4.6x** | 19 / 19 |
-| **均值** | — | **2606 ms** | **389 ms** | **6.70x** | 288 / 288 |
-| **合计** | — | **20847 ms** | **3112 ms** | **6.70x** | — |
+| `doc_comparison_table` | 371x293 | 4343 ms | **468 ms** | **9.3x** | 74 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 4791 ms | **713 ms** | **6.7x** | 64 / 66 |
+| `id_card_china` | 1148x672 | 956 ms | **240 ms** | **4.0x** | 12 / 11 |
+| `medical_lab_report` | 430x267 | 4050 ms | **447 ms** | **9.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 1286 ms | **290 ms** | **4.4x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 2227 ms | **386 ms** | **5.8x** | 32 / 32 |
+| `scene_vertical_plaque` | 720x1150 | 603 ms | **110 ms** | **5.5x** | 2 / 2 |
+| `ticket_train` | 670x510 | 1621 ms | **338 ms** | **4.8x** | 19 / 19 |
+| **均值** | — | **2485 ms** | **374 ms** | **6.64x** | 288 / 288 |
+| **合计** | — | **19877 ms** | **2993 ms** | **6.64x** | — |
 
 </details>
 
-**模型越大，优势越明显。** v5 上快 4.25 倍，v6 medium 上快 6.70 倍——因为 OnnxOCR 在大模型上没有做输入分辨率与内存 arena 的取舍，全部按最大配置跑；NOOCR 按形状特征选分辨率并关闭 arena 重规划，模型越大这部分省得越多。
+**模型越大，优势越明显。** v5 上快 5.78 倍，v6 medium 上快 6.64 倍——因为 OnnxOCR 在大模型上没有做输入分辨率与内存 arena 的取舍，全部按最大配置跑；NOOCR 按形状特征选分辨率并关闭 arena 重规划，模型越大这部分省得越多。
 
-四档的文本行数都与对方基本一致（v5 296/296、medium 288/288），说明预处理口径对等，差距来自实现而非"谁认得更多字"。差距主要来自三处：det 的输入分辨率与内存 arena 策略（形状集合有限离散，关掉 `dynamic_shape` 让 arena 生效后提速约 32%）、rec 的字典裁剪，以及会话复用。
+四档的文本行数都与对方基本一致（v5 296/296、medium 288/288），说明预处理口径对等，差距来自实现而非「谁认得更多字」。差距主要来自三处：det 的输入分辨率与内存 arena 策略（形状集合有限离散，关掉 `dynamic_shape` 让 arena 生效后提速约 32%）、rec 的字典裁剪，以及会话复用。
 
 复现：`scripts/perf/compare_onnxocr.md`（需本机另备一份 OnnxOCR 检出与依赖环境）。
 
@@ -305,14 +306,16 @@ python scripts/perf/bench_device.py cuda 3  # GPU 基线
 
 | 后端 | 体积 | 相对速度 | 加权置信度 | 适用 |
 |---|---|---|---|---|
-| `ppocrv6-tiny` | 6.6MB | **1.95x** | 0.956 | 边缘设备、批量 |
-| `ppocrv6-medium` | 132.8MB | 1.11x | **0.981** | 版面复杂、追求精度 |
-| `ppocrv6-small` | 30.3MB | 1.03x | 0.973 | 默认 |
+| `ppocrv6-tiny` | 6.6MB | **1.23x** | 0.956 | 边缘设备、批量 |
 | `ppocrv5` | 21.1MB | 1.00x | 0.928 | 兼容旧项目 |
+| `ppocrv6-small` | 30.3MB | 0.80x | 0.973 | 默认 |
+| `ppocrv6-medium` | 132.8MB | 0.73x | **0.981** | 版面复杂、追求精度 |
 
-RTX 4070 Ti SUPER、8 张示例图、1 轮预热后 5 轮取中位，相对速度以 `ppocrv5` 为基准；加权置信度按字数加权（`scripts/perf/bench_tiers.py`，每档独立进程测量）。
+RTX 4070 Ti SUPER、8 张示例图、3 轮预热后10 轮取均值（含图片解码），相对速度以 `ppocrv5` 为基准；耗时取自与上文对比表**同一批产物**，口径完全一致。加权置信度按字数加权（`scripts/perf/bench_tiers.py`，每档独立进程测量）。
 
-四个 v6 档位的置信度都高于 v5，**medium 档比 small 还快**——它虽然参数多，但 det 分辨率策略让耗时没上去，反而比 small 低了 7%。
+四个 v6 档位的置信度都高于 v5，但**只有 tiny 比 v5 快**。small 与 medium 都更慢，换来的是更高的置信度：medium比 small 再慢约 10%，置信度 0.981 对 0.973（v5 为 0.928）。
+
+> 要快选 tiny，要均衡选 small，要精度选 medium。v5 仅在需要兼容旧项目时使用。
 
 ## 项目结构
 
@@ -341,6 +344,8 @@ scripts/
 ├─ publish_weights.py      权重发布脚本
 ├─ perf/                   性能基准与 A/B 脚本
 │  ├─ bench_device.py      CPU / GPU 基线
+│  ├─ bench_noocr.py       单引擎基准（主对比表 NOOCR 侧）
+│  ├─ compare_make_table.py 由产物生成对比表
 │  ├─ bench_tiers.py       各档位相对速度与置信度
 │  ├─ compare_onnxocr.md   与 OnnxOCR 的对比复现说明
 │  └─ ab_*.py              arena / cuDNN / 档位 A/B

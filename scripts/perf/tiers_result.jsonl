@@ -1,4 +1,4 @@
-{"tier": "ppocrv5", "device": "cuda", "total_ms": 3508.4, "avg_ms": 438.5, "weighted_confidence": 0.9277, "lines": 296, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
-{"tier": "ppocrv6-tiny", "device": "cuda", "total_ms": 1802.1, "avg_ms": 225.3, "weighted_confidence": 0.9562, "lines": 295, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
-{"tier": "ppocrv6-small", "device": "cuda", "total_ms": 3399.1, "avg_ms": 424.9, "weighted_confidence": 0.9729, "lines": 285, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
-{"tier": "ppocrv6-medium", "device": "cuda", "total_ms": 3163.3, "avg_ms": 395.4, "weighted_confidence": 0.9813, "lines": 288, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
+{"tier": "ppocrv5", "device": "cuda", "total_ms": 2139.4, "avg_ms": 267.4, "weighted_confidence": 0.9277, "lines": 296, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
+{"tier": "ppocrv6-tiny", "device": "cuda", "total_ms": 1770.1, "avg_ms": 221.3, "weighted_confidence": 0.9562, "lines": 295, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
+{"tier": "ppocrv6-small", "device": "cuda", "total_ms": 2685.7, "avg_ms": 335.7, "weighted_confidence": 0.9729, "lines": 285, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}
+{"tier": "ppocrv6-medium", "device": "cuda", "total_ms": 3459.4, "avg_ms": 432.4, "weighted_confidence": 0.9813, "lines": 288, "weights": "C:\\Users\\iterhui\\Desktop\\ocr\\models"}

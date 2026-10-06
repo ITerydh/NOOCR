@@ -29,9 +29,11 @@ sys.path.insert(0, str(_HERE.parent.parent))
 
 IMAGES = _HERE / "images"
 
-#: 预热只留 1 轮，测量 10 轮取均值——与 OnnxOCR 侧完全一致。
-#: 单次抖动可到 ±40%，多轮预热会抹平机器状态波动，均值才反映真实期望。
-WARMUP = 1
+#: 预热 3 轮，测量 10 轮取均值——与 OnnxOCR 侧完全一致。
+#: 3 轮预热让机器进入稳态（首轮含CUDA kernel 编译与首次内存分配，
+#: 第二轮还在填充内存池）；10 轮取均值是因为单次抖动可达 ±40%，
+#: 中位数会把方差藏起来。
+WARMUP = 3
 ROUNDS = 10
 BACKEND = sys.argv[1] if len(sys.argv) > 1 else "ppocrv6-small"
 DEVICE = sys.argv[2] if len(sys.argv) > 2 else "cuda"
@@ -91,6 +93,10 @@ def main() -> int:
         "avg_ms": round(avg_all, 1),
         "total_lines": total_lines,
         "images": len(imgs),
+        # 口径写进产物：数字离开这个文件后仍能自证是怎么测出来的
+        "warmup": WARMUP,
+        "rounds": ROUNDS,
+        "stat": "mean",
         # 权重根目录写进结果：换权重来源时必须能从产物里看出来
         # 这份数字是哪套权重跑出来的。
         "weights": str(MODELS_ROOT),
