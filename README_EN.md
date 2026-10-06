@@ -304,8 +304,32 @@ Other tools:
 python scripts/perf/bench_buckets.py cuda   # buckets and sequential call counts
 python scripts/perf/ab_tiers.py cuda        # tier count A/B (with output consistency check)
 python scripts/perf/ab_cudnn.py             # cuDNN algorithm search A/B
+python scripts/perf/ab_arena.py             # memory arena strategy A/B
 python scripts/perf/prof_rec.py cuda        # ORT profiler, per-operator timing
 ```
+
+### Memory arena and dynamic shapes
+
+ONNX Runtime turns off the memory arena whenever `dynamic_shape=True`. That
+is mandatory for models whose **width keeps changing** (rec's input width
+grows with text length; forcing the arena on degrades it to seconds). But for
+models whose **shape set is finite and discrete** it simply wastes the arena.
+
+PP-OCRv6's det falls in the latter category: the short side is always 736,
+the long side is capped and aligned to 32. Interleaved A/B over 5 sample
+images of differing aspect ratios, 12 rounds each:
+
+| det configuration | Median per image |
+|---|---|
+| `dynamic_shape=True` (arena off) | 233.3 ms |
+| `dynamic_shape=False` (arena on) | **157.6 ms** (-32.4%) |
+
+The spread ranges (A 227.7-239.2, B 149.8-168.5) do not overlap at all, so
+the difference is real. End-to-end went from 1541 ms to 1430 ms.
+
+Reproduce with `python scripts/perf/ab_arena.py`. When the two spreads
+overlap, the script reports "not significant" instead of forcing a
+conclusion — which is exactly what should happen on a busy machine.
 
 ## Backend comparison
 
@@ -342,6 +366,45 @@ scripts/
 ├─ publish_weights.py      weight publishing script
 ├─ perf/                   performance benchmarks and A/B scripts
 └─ models_repo_card.md     model card for the weight repository
+```
+
+## Troubleshooting
+
+**`git push` fails with `Permission to <repo> denied to <another user>`**
+
+Some Git distributions set `credential.helper = helper-selector` in the
+**system-level** `gitconfig`. It takes precedence over your `~/.gitconfig`
+and returns whichever account is stored in the Windows Credential Manager
+— so the push is rejected even though your token is correct.
+
+Add a repository-level override; no need to touch global settings:
+
+```bash
+git config --local credential.helper ""
+git config --local credential.helper store
+```
+
+Clearing first matters: the second command alone *appends* rather than
+replaces, and the empty entry is what suppresses the upper-level helper.
+
+Verify which credential is actually used (the password is never echoed):
+
+```bash
+printf 'protocol=https\nhost=github.com\n\n' \
+  | git -c credential.helper= -c credential.helper=store credential fill
+```
+
+If `username` is not the repository owner, the credential is still not
+in effect.
+
+**`UnicodeEncodeError` when printing Chinese text on Windows**
+
+The console defaults to cp1252. The project already guards against this in
+three places (package-level `logging_config`, per-script `reconfigure`, and
+`PYTHONIOENCODING` in CI). If you hit it in your own script, set:
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
 ```
 
 ## License

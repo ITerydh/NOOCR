@@ -303,8 +303,29 @@ python scripts/perf/bench_device.py cuda    # GPU 基線
 python scripts/perf/bench_buckets.py cuda   # 分桶與串行呼叫次數
 python scripts/perf/ab_tiers.py cuda        # 檔位數 A/B（含輸出一致性校驗）
 python scripts/perf/ab_cudnn.py             # cuDNN 演算法搜尋 A/B
+python scripts/perf/ab_arena.py             # 記憶體 arena 策略 A/B
 python scripts/perf/prof_rec.py cuda        # ORT profiler 逐運算子耗時
 ```
+
+### 記憶體 arena 與動態形狀
+
+ONNX Runtime 在 `dynamic_shape=True` 時會一併關閉記憶體 arena。對**寬度
+持續變化**的模型這是必須的（rec 的輸入寬度隨文字長度任意成長，硬開 arena
+會退化到秒級）；但對**形狀集合有限且離散**的模型來說就是白白浪費。
+
+PP-OCRv6 的 det 屬於後者：短邊恆為 736，長邊有上限且對齊到 32。
+5 張不同長寬比範例圖交錯 A/B、各 12 輪：
+
+| det 設定 | 中位耗時/張 |
+|---|---|
+| `dynamic_shape=True`（arena 關） | 233.3 ms |
+| `dynamic_shape=False`（arena 開） | **157.6 ms**（-32.4%） |
+
+兩組波動區間（A 227.7~239.2、B 149.8~168.5）完全不重疊，差異顯著。
+端到端從 1541 ms 降到 1430 ms。
+
+重現：`python scripts/perf/ab_arena.py`。當兩組波動區間重疊時，
+腳本會明確回報「差異不顯著」而不是硬下結論——本機負載高時就該是這句。
 
 ## 後端對比
 
@@ -341,6 +362,43 @@ scripts/
 ├─ publish_weights.py      權重發布腳本
 ├─ perf/                   效能基準與 A/B 腳本
 └─ models_repo_card.md     權重倉庫模型卡
+```
+
+## 常見問題
+
+**`git push` 報 `Permission to <倉庫> denied to <另一個使用者>`**
+
+部分 Git 發行版在**系統層級** `gitconfig` 裡設了
+`credential.helper = helper-selector`，它的優先權高於你的 `~/.gitconfig`，
+會回傳 Windows 憑證管理員裡存著的**另一個帳號**——於是明明設對了
+token仍被拒。
+
+在倉庫目錄內加一條倉庫層級設定即可覆蓋，不必改動全域設定：
+
+```bash
+git config --local credential.helper ""
+git config --local credential.helper store
+```
+
+先清空再寫入是關鍵：只寫第二條是追加而非取代，空項目負責壓掉上層。
+
+驗證實際讀到的是哪一組憑證（`password` 不會回顯）：
+
+```bash
+printf 'protocol=https\nhost=github.com\n\n' \
+  | git -c credential.helper= -c credential.helper=store credential fill
+```
+
+輸出裡的 `username` 不是倉庫擁有者，就代表憑證還沒生效。
+
+**Windows 主控台輸出中文報 `UnicodeEncodeError`**
+
+主控台預設編碼是 cp1252。專案已做三層防護（套件內 `logging_config`、
+各腳本的 `reconfigure`、CI 的 `PYTHONIOENCODING`）；若你是在自己的腳本裡
+遇到，執行前設定：
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
 ```
 
 ## 授權
