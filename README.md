@@ -163,6 +163,19 @@ noocr serve --host 0.0.0.0 --port 8000 --device cuda
 
 界面 `http://127.0.0.1:8000/` —— 左侧上传与参数、右侧图文对照双列联动、下方识别记录与示例图。顶栏设备徽标可直接点击切换 CPU / GPU，无需重启。接口文档 `http://127.0.0.1:8000/docs`。
 
+<details open>
+<summary><b>界面图例</b>（点击展开）</summary>
+
+**图文对照双列** —— 左侧上传与参数，右侧原图带识别框与识别文本双列联动，下方为识别记录与示例图。顶栏设备徽标显示当前实际生效的设备。
+
+![Web 界面：图文对照双列](docs/images/demo-overview.jpg)
+
+**明细联动** —— 点明细表任一行，图上对应文本框高亮为蓝色，其余保持绿色。
+
+![Web 界面：点明细行图上高亮联动](docs/images/webui-detail.jpg)
+
+</details>
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
@@ -234,6 +247,16 @@ scripts/
 ├─ perf/                   性能基准与 A/B 脚本
 └─ models_repo_card.md     权重仓库模型卡
 ```
+
+## 致谢
+
+本项目在以下开源项目的启发与基础上构建，感谢原作者与社区：
+
+- **[OnnxOCR](https://github.com/jingsongliujing/OnnxOCR)** —— ONNX 推理链路、模型导出与文档结构化思路，是本项目的起点。
+- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR 系列模型与算法设计，本项目的三档后端权重全部来自该项目。
+- **[DeepSeek-AI](https://github.com/deepseek-ai/DeepSeek-OCR)** —— OCR 精度优化的思路参考。
+
+若上述项目的成果对你的工作有帮助，请优先支持它们。
 
 ## 许可
 

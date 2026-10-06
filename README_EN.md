@@ -164,6 +164,19 @@ noocr serve --host 0.0.0.0 --port 8000 --device cuda
 
 The UI at `http://127.0.0.1:8000/` — upload and parameters on the left, image/text side-by-side with linked highlighting on the right, history and samples below. The device badge in the header switches CPU / GPU without restarting. API docs at `http://127.0.0.1:8000/docs`.
 
+<details open>
+<summary><b>UI screenshots</b> (click to expand)</summary>
+
+**Side-by-side image and text** — parameters on the left; the annotated image and the recognized text side by side on the right, with history and samples below. The header badge shows the device actually in use.
+
+![Web UI: side-by-side image and text](docs/images/demo-overview.jpg)
+
+**Linked highlighting** — click any row in the detail table and its box turns blue on the image while the rest stay green.
+
+![Web UI: click a row to highlight it on the image](docs/images/webui-detail.jpg)
+
+</details>
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
@@ -235,6 +248,16 @@ scripts/
 ├─ perf/                   performance benchmarks and A/B scripts
 └─ models_repo_card.md     model card for the weight repo
 ```
+
+## Acknowledgements
+
+This project is built on the work of the following open-source projects. Thanks to their authors and communities:
+
+- **[OnnxOCR](https://github.com/jingsongliujing/OnnxOCR)** — the ONNX inference path, model export and document structuring ideas that became the starting point of this project.
+- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** — the PP-OCR model family and algorithm design; all three backend weight sets come from this project.
+- **[DeepSeek-AI](https://github.com/deepseek-ai/DeepSeek-OCR)** — reference for OCR accuracy optimization approaches.
+
+If these projects helped your own work, please consider supporting them.
 
 ## License
 

@@ -163,6 +163,19 @@ noocr serve --host 0.0.0.0 --port 8000 --device cuda
 
 介面 `http://127.0.0.1:8000/` —— 左側上傳與參數、右側圖文對照雙欄連動、下方辨識記錄與範例圖。頂欄裝置徽標可直接點擊切換 CPU / GPU，無需重啟。API 文件 `http://127.0.0.1:8000/docs`。
 
+<details open>
+<summary><b>介面圖例</b>（點擊展開）</summary>
+
+**圖文對照雙欄** —— 左側上傳與參數，右側原圖帶識別框與識別文字雙欄連動，下方為辨識記錄與範例圖。頂欄裝置徽標顯示目前實際生效的裝置。
+
+![Web 介面：圖文對照雙欄](docs/images/demo-overview.jpg)
+
+**明細連動** —— 點明細表任一行，圖上對應文字框高亮為藍色，其餘保持綠色。
+
+![Web 介面：點明細行圖上高亮連動](docs/images/webui-detail.jpg)
+
+</details>
+
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | `GET` | `/health` | 健康檢查 |
@@ -234,6 +247,16 @@ scripts/
 ├─ perf/                   效能基準與 A/B 腳本
 └─ models_repo_card.md     權重倉庫模型卡
 ```
+
+## 致謝
+
+本專案在建構過程中受益於以下開源專案，感謝原作者與社群：
+
+- **[OnnxOCR](https://github.com/jingsongliujing/OnnxOCR)** —— ONNX 推論鏈路、模型匯出與文件結構化思路，本專案的起點。
+- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR 系列模型與演算法設計，本專案三檔後端的權重皆來自此專案。
+- **[DeepSeek-AI](https://github.com/deepseek-ai/DeepSeek-OCR)** —— OCR 精度最佳化的思路參考。
+
+若上述專案的成果對你的工作有所幫助，請優先支持它們。
 
 ## 授權
 
