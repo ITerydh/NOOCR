@@ -33,6 +33,13 @@ def _make_ppocrv6_small(**opts) -> OCRBackend:
     return PPOCRv6Backend(**opts)
 
 
+def _make_ppocrv6_medium(**opts) -> OCRBackend:
+    from .ppocrv6 import PPOCRv6Backend
+
+    opts["tier"] = "medium"
+    return PPOCRv6Backend(**opts)
+
+
 #: 后端名 -> 工厂
 #:
 #: :data:`_ALIASES` 里的名字**不进这张表**。别名与规范名指向同一个
@@ -43,6 +50,7 @@ BACKEND_REGISTRY: Dict[str, Callable[..., OCRBackend]] = {
     "ppocrv5": _make_ppocrv5,
     "ppocrv6-tiny": _make_ppocrv6_tiny,
     "ppocrv6-small": _make_ppocrv6_small,
+    "ppocrv6-medium": _make_ppocrv6_medium,
 }
 
 #: 别名 -> 规范名。``ppocrv6`` 与 ``ppocrv6-small`` 是同一档。
@@ -55,24 +63,34 @@ _ACCEPTABLE: Tuple[str, ...] = tuple(sorted(set(BACKEND_REGISTRY) | set(_ALIASES
 
 #: 各后端的**静态**能力摘要，供 ``list_backends`` 零成本列出。
 #: 不能靠实例化拿到——那会真的加载模型。
+#:
+#: ``det_mb`` / ``rec_mb`` 是 ``models/`` 里实际文件的大小（MB，MiB），
+#: 由 ``python -m noocr models`` 量出来。改了权重就要同步这里，
+#: 否则 CLI的 ``noocr backends`` 与 WebUI 下拉里的体积会骗人。
 _CAPABILITY_SUMMARY: Dict[str, Dict[str, object]] = {
     "ppocrv5": {
         "label": "PP-OCRv5",
         "det_mb": 4.6,
-        "rec_mb": 11.0,
-        "notes": "上一代通用OCR",
+        "rec_mb": 15.9,
+        "notes": "上一代通用OCR，兼容旧项目",
     },
     "ppocrv6-tiny": {
         "label": "PP-OCRv6 tiny",
-        "det_mb": 1.8,
+        "det_mb": 1.7,
         "rec_mb": 4.3,
         "notes": "1.5M参数，最快，精度较低",
     },
     "ppocrv6-small": {
         "label": "PP-OCRv6 small",
         "det_mb": 9.5,
-        "rec_mb": 21.0,
-        "notes": "7.7M参数，默认档，检测+4.6%/识别+5.1%",
+        "rec_mb": 20.3,
+        "notes": "7.7M参数，默认档，精度与速度均衡",
+    },
+    "ppocrv6-medium": {
+        "label": "PP-OCRv6 medium",
+        "det_mb": 59.2,
+        "rec_mb": 73.0,
+        "notes": "34.5M参数，服务器档，版面复杂时精度最高",
     },
 }
 

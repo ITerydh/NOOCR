@@ -68,7 +68,6 @@ BACKEND_MODELS: Dict[str, List[ModelSpec]] = {
     # ---- PP-OCRv6：官方新一代，检测 +4.6% / 识别 +5.1% ----
     # tiny: 1.8MB det + 4.3MB rec（1.5M 参数，边缘设备）
     # small: 9.5MB det + 21MB  rec（7.7M 参数，默认档）
-    # medium: 34.5M 参数（服务器档，未包含）
     "ppocrv6-tiny": [
         ModelSpec("ppocrv6/det/PP-OCRv6_det_tiny.onnx"),
         ModelSpec("ppocrv6/rec/PP-OCRv6_rec_tiny.onnx"),
@@ -78,6 +77,13 @@ BACKEND_MODELS: Dict[str, List[ModelSpec]] = {
     "ppocrv6-small": [
         ModelSpec("ppocrv6/det/PP-OCRv6_det_small.onnx"),
         ModelSpec("ppocrv6/rec/PP-OCRv6_rec_small.onnx"),
+        ModelSpec("ppocrv6/cls/cls.onnx", required=False),
+        ModelSpec("ppocrv6/ppocrv6_dict.txt"),
+    ],
+    # medium: 34.5M 参数（服务器档，版面复杂/追求精度时用）
+    "ppocrv6-medium": [
+        ModelSpec("ppocrv6/det/PP-OCRv6_det_medium.onnx"),
+        ModelSpec("ppocrv6/rec/PP-OCRv6_rec_medium.onnx"),
         ModelSpec("ppocrv6/cls/cls.onnx", required=False),
         ModelSpec("ppocrv6/ppocrv6_dict.txt"),
     ],

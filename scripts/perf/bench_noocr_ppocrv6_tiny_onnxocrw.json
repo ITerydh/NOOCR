@@ -1,0 +1,60 @@
+{
+  "engine": "NOOCR",
+  "backend": "ppocrv6-tiny",
+  "device": "cuda",
+  "boot_ms": 12.6,
+  "avg_ms": 234.7,
+  "total_lines": 295,
+  "images": 8,
+  "per_image": {
+    "doc_comparison_table.jpg": {
+      "avg_ms": 310.6,
+      "lines": 74,
+      "min_ms": 307.8,
+      "max_ms": 316.5
+    },
+    "exam_chinese_primary.jpg": {
+      "avg_ms": 477.1,
+      "lines": 75,
+      "min_ms": 472.6,
+      "max_ms": 480.3
+    },
+    "id_card_china.jpg": {
+      "avg_ms": 171.2,
+      "lines": 9,
+      "min_ms": 167.5,
+      "max_ms": 176.8
+    },
+    "medical_lab_report.jpg": {
+      "avg_ms": 264.5,
+      "lines": 69,
+      "min_ms": 253.5,
+      "max_ms": 287.8
+    },
+    "product_spec_sheet.jpg": {
+      "avg_ms": 145.7,
+      "lines": 16,
+      "min_ms": 142.6,
+      "max_ms": 150.5
+    },
+    "receipt_bank_statement.jpg": {
+      "avg_ms": 256.9,
+      "lines": 30,
+      "min_ms": 245.8,
+      "max_ms": 292.9
+    },
+    "scene_vertical_plaque.jpg": {
+      "avg_ms": 63.5,
+      "lines": 2,
+      "min_ms": 60.4,
+      "max_ms": 67.4
+    },
+    "ticket_train.jpg": {
+      "avg_ms": 188.1,
+      "lines": 20,
+      "min_ms": 178.5,
+      "max_ms": 207.5
+    }
+  },
+  "models_root": "C:\\Users\\iterhui\\Desktop\\bench\\weights_v6_onnxocr"
+}

@@ -84,3 +84,8 @@ _bench_*.json
 # AI 助手本地数据（含项目记忆，不应进仓库）
 .workbuddy/
 .genie/
+
+# 性能对比工作区（OnnxOCR 检出与共用权重目录，见 scripts/perf/compare_onnxocr.md）
+scripts/perf/OnnxOCR/
+scripts/perf/weights_shared/
+scripts/perf/onnxocr-env/

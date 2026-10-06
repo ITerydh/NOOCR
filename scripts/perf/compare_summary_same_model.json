@@ -1,0 +1,56 @@
+{
+  "note": "同模型对比：四个档位两侧读同一份权重文件；v5 md5 一致，v6 走共用目录",
+  "images": 8,
+  "gpu": "NVIDIA GeForce RTX 4070 Ti SUPER",
+  "ort_version": "1.23.2",
+  "tiers": {
+    "ppocrv5": {
+      "tier": "ppocrv5",
+      "onnxocr_ms": 1679.0,
+      "noocr_ms": 395.3,
+      "speedup_median": 4.25,
+      "speedup_total": 4.25,
+      "lines": {
+        "OnnxOCR": 296,
+        "NOOCR": 296
+      },
+      "weights": ""
+    },
+    "ppocrv6-tiny": {
+      "tier": "ppocrv6-tiny",
+      "onnxocr_ms": 1054.2,
+      "noocr_ms": 234.7,
+      "speedup_median": 4.49,
+      "speedup_total": 4.49,
+      "lines": {
+        "OnnxOCR": 289,
+        "NOOCR": 295
+      },
+      "weights": ""
+    },
+    "ppocrv6-small": {
+      "tier": "ppocrv6-small",
+      "onnxocr_ms": 1522.1,
+      "noocr_ms": 377.1,
+      "speedup_median": 4.04,
+      "speedup_total": 4.04,
+      "lines": {
+        "OnnxOCR": 289,
+        "NOOCR": 285
+      },
+      "weights": ""
+    },
+    "ppocrv6-medium": {
+      "tier": "ppocrv6-medium",
+      "onnxocr_ms": 2605.9,
+      "noocr_ms": 389.0,
+      "speedup_median": 6.7,
+      "speedup_total": 6.7,
+      "lines": {
+        "OnnxOCR": 288,
+        "NOOCR": 288
+      },
+      "weights": ""
+    }
+  }
+}

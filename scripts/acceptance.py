@@ -123,7 +123,11 @@ def main() -> int:
     rc, txt = env.run("--help")
     check("--help 含 --device", rc == 0 and "--device" in txt)
     rc, txt = env.run("backends")
-    check("backends", rc == 0 and "ppocrv6" in txt)
+    # 四档都要在列，且每档都要报体积——少一档说明注册表漏登记了
+    check("backends 四档齐全",
+          rc == 0 and all(n in txt for n in ("ppocrv5", "ppocrv6-tiny",
+                                          "ppocrv6-small", "ppocrv6-medium")))
+    check("backends 报体积", "MB" in txt)
     rc, txt = env.run("models")
     check("models 权重状态", rc == 0 and "ppocrv6" in txt)
     rc, txt = env.run("x.jpg", "-d", "nonsense")
@@ -150,8 +154,8 @@ def main() -> int:
               f"rc={rc}" + (f" 缺 {missing}" if missing else f" {len(body)} 字符"))
 
     # ------------------------------------------------------------ 后端档位
-    section("三档后端")
-    for be in ("ppocrv6-tiny", "ppocrv6-small", "ppocrv5"):
+    section("四档后端")
+    for be in ("ppocrv6-tiny", "ppocrv6-small", "ppocrv6-medium", "ppocrv5"):
         rc, txt = env.run(img, "-b", be, "-f", "text")
         check(f"后端 {be}", rc == 0 and "行" in txt, env.first(txt, "行 /"))
 

@@ -23,7 +23,7 @@ For problems, see [Q&A.md](Q&A.md).
 |---|---|
 | **One dependency file** | CPU and NVIDIA machines install the same `requirements.txt` |
 | **CPU / GPU** | Same code, `--device cpu` or `--device cuda`, auto-detected by default |
-| **Three backends** | PP-OCRv6 tiny (6MB) / small (32MB, default) / v5 (16MB) |
+| **Four backends** | PP-OCRv6 tiny (6.6MB) / small (30.3MB, default) / medium (132.8MB) / v5 (21.1MB) |
 | **Multi-format input** | Images, PDF, Word, Excel, PPT, URL |
 | **Reproducible** | Output is independent of `rec_batch_size` |
 | **Four delivery forms** | Library / CLI / REST API / Web UI |
@@ -63,13 +63,14 @@ The project also searches common locations such as the project root and `site-pa
 
 ## Getting the weights
 
-All 17 files (95.8MB) are hosted on ModelScope: **[iterhui/noocr-onnx](https://www.modelscope.cn/models/iterhui/noocr-onnx)**. Fetch per backend:
+All 19 files (223.6MB) are hosted on ModelScope: **[iterhui/noocr-onnx](https://www.modelscope.cn/models/iterhui/noocr-onnx)**. Fetch per backend:
 
 ```bash
-python -m noocr models                     # show status per backend
-python -m noocr models --get ppocrv6-tiny  # 6.1MB, fastest
-python -m noocr models --get ppocrv6-small # 30.5MB, default
-python -m noocr models --get ppocrv5       # 15.6MB
+python -m noocr models                      # show status per backend
+python -m noocr models --get ppocrv6-tiny   # 6.6MB, fastest
+python -m noocr models --get ppocrv6-small  # 30.3MB, default
+python -m noocr models --get ppocrv6-medium # 132.8MB, server tier, most accurate
+python -m noocr models --get ppocrv5        # 21.1MB
 ```
 
 Or fetch everything at once:
@@ -197,40 +198,107 @@ curl -X POST http://127.0.0.1:8000/api/ocr \
 
 ## Performance
 
-RTX 4070 Ti SUPER + ppocrv6-small, median over the sample images:
+RTX 4070 Ti SUPER + `ppocrv6-small`, the same 8 sample images as the comparison table above, image decoding included, each device in its own process, 1 warm-up round then the mean of 3 rounds:
 
 | Image | Lines | CPU | GPU | Speedup |
 |---|---|---|---|---|
-| Receipt | 19 | 15537 ms | **594 ms** | 26x |
-| Bank statement | 30 | 13040 ms | **577 ms** | 23x |
-| Lab report | 69 | 10396 ms | **567 ms** | 18x |
-| ID card | 11 | 13317 ms | **400 ms** | 33x |
-| Bank branch | 4 | 9414 ms | **249 ms** | 38x |
+| Comparison table | 73 | 9139 ms | **485 ms** | 19x |
+| Primary school exam | 65 | 2000 ms | **759 ms** | 2.6x |
+| ID card | 11 | 1649 ms | **266 ms** | 6.2x |
+| Lab report | 69 | 1322 ms | **379 ms** | 3.5x |
+| Product spec | 16 | 1750 ms | **267 ms** | 6.6x |
+| Bank statement | 31 | 1591 ms | **355 ms** | 4.5x |
+| Vertical plaque | 2 | 1317 ms | **98 ms** | 13.5x |
+| Train ticket | 19 | 1672 ms | **301 ms** | 5.6x |
+| **Total** | — | **20440 ms** | **2909 ms** | **7.0x** |
 
-The first GPU request includes about 2.4s of model loading and CUDA kernel compilation; afterwards it stabilizes at 0.25-0.6s. Reproduce with:
+The speedup has little to do with line count — layout complexity dominates. `Comparison table` is dense small text and post-processing alone takes 9 seconds on CPU; `Vertical plaque` has only 2 lines but a large canvas, and needs just 98ms on GPU. Dense layouts actually suffer more on CPU.
+
+The first GPU request includes about 2.4s of model loading and CUDA kernel compilation; afterwards it stabilizes at 0.1-0.8s. Reproduce with:
 
 ```bash
-python scripts/perf/bench_device.py cpu     # CPU baseline
-python scripts/perf/bench_device.py cuda    # GPU baseline
+python scripts/perf/bench_device.py cpu 3   # CPU baseline
+python scripts/perf/bench_device.py cuda 3  # GPU baseline
 ```
+
+Run the two devices in separate processes — measuring both in one process makes the CPU thread configuration interfere with itself, and the resulting speedup means nothing.
 
 ### Measured against OnnxOCR
 
-Same 8 sample images, same RTX 4070 Ti SUPER, same ONNX Runtime 1.23.2, angle classification enabled on both sides, image decoding included, median of 5 runs per image:
+**Four tiers, both engines reading the very same weight files** (det / rec / dictionary verified byte-identical by MD5), same RTX 4070 Ti SUPER, both on ONNX Runtime 1.23.2, direction classification enabled on both sides, image decoding included, 1 warm-up round then the mean of 10 rounds per image:
 
-| Sample | Resolution | OnnxOCR<br>ppocrv5 | NOOCR<br>v6 small | Ratio | NOOCR<br>v6 tiny | Ratio |
-|---|---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 3091 ms / 81 lines | 459 ms / 73 lines | **6.7x** | 327 ms / 74 lines | **9.5x** |
-| `exam_chinese_primary` | 1920x2560 | 3320 ms / 72 lines | 734 ms / 65 lines | **4.5x** | 490 ms / 75 lines | **6.8x** |
-| `id_card_china` | 1148x672 | 656 ms / 10 lines | 266 ms / 11 lines | **2.5x** | 169 ms / 9 lines | **3.9x** |
-| `medical_lab_report` | 430x267 | 2601 ms / 69 lines | 454 ms / 69 lines | **5.7x** | 259 ms / 69 lines | **10.0x** |
-| `product_spec_sheet` | 500x500 | 800 ms / 16 lines | 351 ms / 16 lines | **2.3x** | 147 ms / 16 lines | **5.5x** |
-| `receipt_bank_statement` | 500x667 | 1207 ms / 30 lines | 396 ms / 30 lines | **3.0x** | 249 ms / 30 lines | **4.8x** |
-| `scene_vertical_plaque` | 720x1150 | 312 ms / 2 lines | 135 ms / 2 lines | **2.3x** | 65 ms / 2 lines | **4.8x** |
-| `ticket_train` | 670x510 | 776 ms / 18 lines | 359 ms / 19 lines | **2.2x** | 184 ms / 20 lines | **4.2x** |
-| **Median** | — | **1004 ms** | **378 ms** | **2.66x** | **216 ms** | **4.64x** |
+<details open>
+<summary><b>PP-OCRv5</b>（点击展开）</summary>
 
-The gap comes mainly from three places: det input resolution and memory arena strategy (PP-OCRv6 det has a fixed short side of 736, so its shape set is finite and discrete — turning off `dynamic_shape` lets the arena work, worth about 32% on det), dictionary cropping in rec, and session reuse during batch inference.
+| Sample | Resolution | OnnxOCR<br>PP-OCRv5 | NOOCR<br>PP-OCRv5 | Ratio | Lines |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 3691 ms | **453 ms** | **8.2x** | 82 / 79 |
+| `exam_chinese_primary` | 1920x2560 | 3259 ms | **1062 ms** | **3.1x** | 68 / 73 |
+| `id_card_china` | 1148x672 | 551 ms | **205 ms** | **2.7x** | 9 / 10 |
+| `medical_lab_report` | 430x267 | 2512 ms | **309 ms** | **8.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 778 ms | **213 ms** | **3.6x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1376 ms | **287 ms** | **4.8x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 303 ms | **111 ms** | **2.7x** | 2 / 2 |
+| `ticket_train` | 670x510 | 961 ms | **522 ms** | **1.8x** | 19 / 17 |
+| **Mean** | — | **1679 ms** | **395 ms** | **4.25x** | 296 / 296 |
+| **Total** | — | **13432 ms** | **3162 ms** | **4.25x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 tiny</b>（点击展开）</summary>
+
+| Sample | Resolution | OnnxOCR<br>PP-OCRv6 tiny | NOOCR<br>PP-OCRv6 tiny | Ratio | Lines |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 1838 ms | **311 ms** | **5.9x** | 73 / 74 |
+| `exam_chinese_primary` | 1920x2560 | 2210 ms | **477 ms** | **4.6x** | 70 / 75 |
+| `id_card_china` | 1148x672 | 374 ms | **171 ms** | **2.2x** | 9 / 9 |
+| `medical_lab_report` | 430x267 | 1729 ms | **264 ms** | **6.5x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 527 ms | **146 ms** | **3.6x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 932 ms | **257 ms** | **3.6x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 191 ms | **64 ms** | **3.0x** | 2 / 2 |
+| `ticket_train` | 670x510 | 631 ms | **188 ms** | **3.4x** | 19 / 20 |
+| **Mean** | — | **1054 ms** | **235 ms** | **4.49x** | 289 / 295 |
+| **Total** | — | **8433 ms** | **1878 ms** | **4.49x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 small</b>（点击展开）</summary>
+
+| Sample | Resolution | OnnxOCR<br>PP-OCRv6 small | NOOCR<br>PP-OCRv6 small | Ratio | Lines |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 2786 ms | **457 ms** | **6.1x** | 71 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 2964 ms | **921 ms** | **3.2x** | 71 / 65 |
+| `id_card_china` | 1148x672 | 555 ms | **257 ms** | **2.2x** | 10 / 11 |
+| `medical_lab_report` | 430x267 | 2501 ms | **363 ms** | **6.9x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 768 ms | **266 ms** | **2.9x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1345 ms | **352 ms** | **3.8x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 308 ms | **100 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 949 ms | **300 ms** | **3.2x** | 19 / 19 |
+| **Mean** | — | **1522 ms** | **377 ms** | **4.04x** | 289 / 285 |
+| **Total** | — | **12177 ms** | **3016 ms** | **4.04x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 medium</b>（点击展开）</summary>
+
+| Sample | Resolution | OnnxOCR<br>PP-OCRv6 medium | NOOCR<br>PP-OCRv6 medium | Ratio | Lines |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 4535 ms | **478 ms** | **9.5x** | 74 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 5175 ms | **729 ms** | **7.1x** | 64 / 66 |
+| `id_card_china` | 1148x672 | 1003 ms | **245 ms** | **4.1x** | 12 / 11 |
+| `medical_lab_report` | 430x267 | 4202 ms | **462 ms** | **9.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 1326 ms | **299 ms** | **4.4x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 2304 ms | **417 ms** | **5.5x** | 32 / 32 |
+| `scene_vertical_plaque` | 720x1150 | 634 ms | **115 ms** | **5.5x** | 2 / 2 |
+| `ticket_train` | 670x510 | 1669 ms | **366 ms** | **4.6x** | 19 / 19 |
+| **Mean** | — | **2606 ms** | **389 ms** | **6.70x** | 288 / 288 |
+| **Total** | — | **20847 ms** | **3112 ms** | **6.70x** | — |
+
+</details>
+
+**The larger the model, the larger the gap.** 4.25x on v5, 6.70x on v6 medium — OnnxOCR makes no trade-off on input resolution and memory arena for big models and simply runs everything at maximum configuration; NOOCR picks resolution by shape characteristics and turns off arena replanning, so the bigger the model the more that saves.
+
+Line counts match closely across all four tiers (v5 296/296, medium 288/288), so preprocessing is on equal footing and the gap comes from the implementation, not from "who reads more words". It comes mainly from three places: det input resolution and memory arena policy (the set of shapes is finite and discrete, so disabling `dynamic_shape` lets the arena work and speeds up det by ~32%), rec dictionary trimming, and session reuse.
 
 Reproduce with `scripts/perf/compare_onnxocr.md` (requires a separate OnnxOCR checkout and dependency environment).
 
@@ -238,9 +306,14 @@ Reproduce with `scripts/perf/compare_onnxocr.md` (requires a separate OnnxOCR ch
 
 | Backend | Size | Relative speed | Weighted confidence | Use for |
 |---|---|---|---|---|
-| `ppocrv6-tiny` | 6.1MB | **0.58x** | 0.961 | Edge devices, batch work |
-| `ppocrv6-small` | 30.5MB | 1.73x | **0.971** | Default |
-| `ppocrv5` | 15.6MB | 1.00x | 0.936 | Legacy compatibility |
+| `ppocrv6-tiny` | 6.6MB | **1.95x** | 0.956 | Edge devices, batch work |
+| `ppocrv6-medium` | 132.8MB | 1.11x | **0.981** | Complex layouts, best accuracy |
+| `ppocrv6-small` | 30.3MB | 1.03x | 0.973 | Default |
+| `ppocrv5` | 21.1MB | 1.00x | 0.928 | Legacy compatibility |
+
+RTX 4070 Ti SUPER, 8 sample images, 1 warm-up round then median of 5, relative speed based on `ppocrv5`; confidence weighted by character count (`scripts/perf/bench_tiers.py`, each tier measured in its own process).
+
+All four v6 tiers beat v5 on confidence, and the **medium tier is even faster than small** — despite more parameters, its det resolution strategy keeps the time down, 7% below small.
 
 ## Project structure
 
@@ -269,6 +342,7 @@ scripts/
 ├─ publish_weights.py      weight publishing script
 ├─ perf/                   performance benchmarks and A/B scripts
 │  ├─ bench_device.py      CPU / GPU baseline
+│  ├─ bench_tiers.py       per-tier relative speed and confidence
 │  ├─ compare_onnxocr.md   how to reproduce the OnnxOCR comparison
 │  └─ ab_*.py              arena / cuDNN / tier A/B
 ├─ shrink_images.py        screenshot compression
@@ -280,7 +354,7 @@ scripts/
 This project is built on the work of the following open-source projects. Thanks to their authors and communities:
 
 - **[OnnxOCR](https://github.com/jingsongliujing/OnnxOCR)** — the ONNX inference path, model export and document structuring ideas that became the starting point of this project.
-- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** — the PP-OCR model family and algorithm design; all three backend weight sets come from this project.
+- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** — the PP-OCR model family and algorithm design; all four backend weight sets come from this project.
 - **[DeepSeek-AI](https://github.com/deepseek-ai/DeepSeek-OCR)** — reference for OCR accuracy optimization approaches.
 
 If these projects helped your own work, please consider supporting them.

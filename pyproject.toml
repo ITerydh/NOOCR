@@ -93,14 +93,13 @@ ignore = [
     "SIM108",
 ]
 
+# tests/ 下是**可直接执行的脚本**（`python tests/test_units.py`），
+# 不是 pytest 用例：它们导入即运行、结尾 sys.exit()，pytest 收集时
+# 会被 SystemExit 打断并报 INTERNALERROR。
+#
+# 因此这里**不配置 [tool.pytest.ini_options]**。项目也不依赖 pytest，
+# CI 直接用 `python tests/<脚本>.py` 调用（见 .github/workflows/ci.yml）。
+# 若确需用 pytest 驱动，tests/conftest.py 会把这些文件全部排除。
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-q --strict-markers"
-markers = [
-    "slow: 需要下载模型或跑真实推理的慢测试",
-    "gpu: 需要 NVIDIA GPU",
-]

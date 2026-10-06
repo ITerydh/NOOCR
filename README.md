@@ -23,7 +23,7 @@ python -m noocr serve                         # Web 界面 http://127.0.0.1:8000
 |---|---|
 | **一份依赖** | CPU 与 NVIDIA 机器装同一个 `requirements.txt`，无需重建环境 |
 | **CPU / GPU 双模** | 同一份代码，`--device cpu` 或 `--device cuda`，默认自动探测 |
-| **三档后端** | PP-OCRv6 tiny（6MB）/ small（32MB，默认）/ v5（16MB） |
+| **四档后端** | PP-OCRv6 tiny（6.6MB）/ small（30.3MB，默认）/ medium（132.8MB）/ v5（21.1MB） |
 | **多格式输入** | 图片、PDF、Word、Excel、PPT、URL |
 | **结果可复现** | 识别输出与 `rec_batch_size` 无关 |
 | **四种交付** | 库 / CLI / REST API / Web 界面 |
@@ -63,13 +63,14 @@ export NOOCR_GPU_LIB_DIR=/usr/local/cudnn/lib       # Linux
 
 ## 获取权重
 
-全部 17 个权重（95.8MB）托管在 ModelScope：**[iterhui/noocr-onnx](https://www.modelscope.cn/models/iterhui/noocr-onnx)**，按后端按需下载：
+全部 19 个权重（223.6MB）托管在 ModelScope：**[iterhui/noocr-onnx](https://www.modelscope.cn/models/iterhui/noocr-onnx)**，按后端按需下载：
 
 ```bash
-python -m noocr models                     # 查看各后端状态
-python -m noocr models --get ppocrv6-tiny  # 6.1MB，最快
-python -m noocr models --get ppocrv6-small # 30.5MB，默认
-python -m noocr models --get ppocrv5       # 15.6MB
+python -m noocr models                      # 查看各后端状态
+python -m noocr models --get ppocrv6-tiny   # 6.1MB，最快
+python -m noocr models --get ppocrv6-small  # 30.5MB，默认
+python -m noocr models --get ppocrv6-medium # 132.8MB，服务器档，精度最高
+python -m noocr models --get ppocrv5        # 21.1MB
 ```
 
 或一次性拉全部：
@@ -196,40 +197,107 @@ curl -X POST http://127.0.0.1:8000/api/ocr \
 
 ## 性能
 
-RTX 4070 Ti SUPER + ppocrv6-small，同一批示例图取中位数：
+RTX 4070 Ti SUPER + `ppocrv6-small`，与性能对比表同一批 8 张图、含图片解码，每档独立进程、1 轮预热后取 3 轮均值：
 
 | 图片 | 行数 | CPU | GPU | 加速比 |
 |---|---|---|---|---|
-| 票据 | 19 | 15537 ms | **594 ms** | 26x |
-| 银行流水 | 30 | 13040 ms | **577 ms** | 23x |
-| 化验单 | 69 | 10396 ms | **567 ms** | 18x |
-| 身份证 | 11 | 13317 ms | **400 ms** | 33x |
-| 银行网点 | 4 | 9414 ms | **249 ms** | 38x |
+| 对比表格 | 73 | 9139 ms | **485 ms** | 19x |
+| 小学试卷 | 65 | 2000 ms | **759 ms** | 2.6x |
+| 身份证 | 11 | 1649 ms | **266 ms** | 6.2x |
+| 化验单 | 69 | 1322 ms | **379 ms** | 3.5x |
+| 规格书 | 16 | 1750 ms | **267 ms** | 6.6x |
+| 银行流水 | 31 | 1591 ms | **355 ms** | 4.5x |
+| 竖式牌匾 | 2 | 1317 ms | **98 ms** | 13.5x |
+| 火车票 | 19 | 1672 ms | **301 ms** | 5.6x |
+| **合计** | — | **20440 ms** | **2909 ms** | **7.0x** |
 
-GPU 侧首次请求含约 2.4s 的模型加载与 CUDA kernel 编译，之后稳定在 0.25-0.6s。复现：
+加速比与「行数多少」关系不大，主要看版面复杂度——`对比表格` 是密集小字，CPU 上光后处理就占了 9 秒；`竖式牌匾` 只有 2 行但图大，GPU 上只要 98ms。CPU 上密集版面反而更吃亏。
+
+GPU 侧首次请求含约 2.4s 的模型加载与 CUDA kernel 编译，之后稳定在 0.1-0.8s。复现：
 
 ```bash
-python scripts/perf/bench_device.py cpu     # CPU 基线
-python scripts/perf/bench_device.py cuda    # GPU 基线
+python scripts/perf/bench_device.py cpu 3   # CPU 基线
+python scripts/perf/bench_device.py cuda 3  # GPU 基线
 ```
+
+两个 device 要分开跑——同一进程里连续跑会让 CPU 线程配置互相干扰，测出来的加速比没有意义。
 
 ### 与 OnnxOCR 实测对比
 
-同一批 8 张示例图、同一块RTX 4070 Ti SUPER、同为 ONNX Runtime 1.23.2，两侧都开启方向分类、含图片解码，取每图 5 轮中位数：
+**四个档位、两侧跑同一份权重文件**（det / rec / 字典经 MD5 校验逐字节一致）、同一块 RTX 4070 Ti SUPER、同为 ONNX Runtime 1.23.2，两侧都开启方向分类、含图片解码，每图 1 轮预热后取 10 轮均值：
 
-| 示例图 | 分辨率 | OnnxOCR<br>ppocrv5 | NOOCR<br>v6 small | 倍数 | NOOCR<br>v6 tiny | 倍数 |
-|---|---|---|---|---|---|---|
-| `doc_comparison_table` | 371x293 | 3091 ms / 81 行 | 459 ms / 73 行 | **6.7x** | 327 ms / 74 行 | **9.5x** |
-| `exam_chinese_primary` | 1920x2560 | 3320 ms / 72 行 | 734 ms / 65 行 | **4.5x** | 490 ms / 75 行 | **6.8x** |
-| `id_card_china` | 1148x672 | 656 ms / 10 行 | 266 ms / 11 行 | **2.5x** | 169 ms / 9 行 | **3.9x** |
-| `medical_lab_report` | 430x267 | 2601 ms / 69 行 | 454 ms / 69 行 | **5.7x** | 259 ms / 69 行 | **10.0x** |
-| `product_spec_sheet` | 500x500 | 800 ms / 16 行 | 351 ms / 16 行 | **2.3x** | 147 ms / 16 行 | **5.5x** |
-| `receipt_bank_statement` | 500x667 | 1207 ms / 30 行 | 396 ms / 30 行 | **3.0x** | 249 ms / 30 行 | **4.8x** |
-| `scene_vertical_plaque` | 720x1150 | 312 ms / 2 行 | 135 ms / 2 行 | **2.3x** | 65 ms / 2 行 | **4.8x** |
-| `ticket_train` | 670x510 | 776 ms / 18 行 | 359 ms / 19 行 | **2.2x** | 184 ms / 20 行 | **4.2x** |
-| **中位** | — | **1004 ms** | **378 ms** | **2.66x** | **216 ms** | **4.64x** |
+<details open>
+<summary><b>PP-OCRv5</b>（点击展开）</summary>
 
-差距主要来自三处：det 的输入分辨率与内存 arena 策略（PP-OCRv6 det 短边恒 736，形状集合有限，关掉 `dynamic_shape` 让 arena 生效后提速约 32%）、rec 的字典裁剪，以及批量推理时的会话复用。
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv5 | NOOCR<br>PP-OCRv5 | 倍数 | 文本行 |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 3691 ms | **453 ms** | **8.2x** | 82 / 79 |
+| `exam_chinese_primary` | 1920x2560 | 3259 ms | **1062 ms** | **3.1x** | 68 / 73 |
+| `id_card_china` | 1148x672 | 551 ms | **205 ms** | **2.7x** | 9 / 10 |
+| `medical_lab_report` | 430x267 | 2512 ms | **309 ms** | **8.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 778 ms | **213 ms** | **3.6x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1376 ms | **287 ms** | **4.8x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 303 ms | **111 ms** | **2.7x** | 2 / 2 |
+| `ticket_train` | 670x510 | 961 ms | **522 ms** | **1.8x** | 19 / 17 |
+| **均值** | — | **1679 ms** | **395 ms** | **4.25x** | 296 / 296 |
+| **合计** | — | **13432 ms** | **3162 ms** | **4.25x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 tiny</b>（点击展开）</summary>
+
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 tiny | NOOCR<br>PP-OCRv6 tiny | 倍数 | 文本行 |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 1838 ms | **311 ms** | **5.9x** | 73 / 74 |
+| `exam_chinese_primary` | 1920x2560 | 2210 ms | **477 ms** | **4.6x** | 70 / 75 |
+| `id_card_china` | 1148x672 | 374 ms | **171 ms** | **2.2x** | 9 / 9 |
+| `medical_lab_report` | 430x267 | 1729 ms | **264 ms** | **6.5x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 527 ms | **146 ms** | **3.6x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 932 ms | **257 ms** | **3.6x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 191 ms | **64 ms** | **3.0x** | 2 / 2 |
+| `ticket_train` | 670x510 | 631 ms | **188 ms** | **3.4x** | 19 / 20 |
+| **均值** | — | **1054 ms** | **235 ms** | **4.49x** | 289 / 295 |
+| **合计** | — | **8433 ms** | **1878 ms** | **4.49x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 small</b>（点击展开）</summary>
+
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 small | NOOCR<br>PP-OCRv6 small | 倍数 | 文本行 |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 2786 ms | **457 ms** | **6.1x** | 71 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 2964 ms | **921 ms** | **3.2x** | 71 / 65 |
+| `id_card_china` | 1148x672 | 555 ms | **257 ms** | **2.2x** | 10 / 11 |
+| `medical_lab_report` | 430x267 | 2501 ms | **363 ms** | **6.9x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 768 ms | **266 ms** | **2.9x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 1345 ms | **352 ms** | **3.8x** | 31 / 30 |
+| `scene_vertical_plaque` | 720x1150 | 308 ms | **100 ms** | **3.1x** | 2 / 2 |
+| `ticket_train` | 670x510 | 949 ms | **300 ms** | **3.2x** | 19 / 19 |
+| **均值** | — | **1522 ms** | **377 ms** | **4.04x** | 289 / 285 |
+| **合计** | — | **12177 ms** | **3016 ms** | **4.04x** | — |
+
+</details>
+<details>
+<summary><b>PP-OCRv6 medium</b>（点击展开）</summary>
+
+| 示例图 | 分辨率 | OnnxOCR<br>PP-OCRv6 medium | NOOCR<br>PP-OCRv6 medium | 倍数 | 文本行 |
+|---|---|---|---|---|---|
+| `doc_comparison_table` | 371x293 | 4535 ms | **478 ms** | **9.5x** | 74 / 73 |
+| `exam_chinese_primary` | 1920x2560 | 5175 ms | **729 ms** | **7.1x** | 64 / 66 |
+| `id_card_china` | 1148x672 | 1003 ms | **245 ms** | **4.1x** | 12 / 11 |
+| `medical_lab_report` | 430x267 | 4202 ms | **462 ms** | **9.1x** | 69 / 69 |
+| `product_spec_sheet` | 500x500 | 1326 ms | **299 ms** | **4.4x** | 16 / 16 |
+| `receipt_bank_statement` | 500x667 | 2304 ms | **417 ms** | **5.5x** | 32 / 32 |
+| `scene_vertical_plaque` | 720x1150 | 634 ms | **115 ms** | **5.5x** | 2 / 2 |
+| `ticket_train` | 670x510 | 1669 ms | **366 ms** | **4.6x** | 19 / 19 |
+| **均值** | — | **2606 ms** | **389 ms** | **6.70x** | 288 / 288 |
+| **合计** | — | **20847 ms** | **3112 ms** | **6.70x** | — |
+
+</details>
+
+**模型越大，优势越明显。** v5 上快 4.25 倍，v6 medium 上快 6.70 倍——因为 OnnxOCR 在大模型上没有做输入分辨率与内存 arena 的取舍，全部按最大配置跑；NOOCR 按形状特征选分辨率并关闭 arena 重规划，模型越大这部分省得越多。
+
+四档的文本行数都与对方基本一致（v5 296/296、medium 288/288），说明预处理口径对等，差距来自实现而非"谁认得更多字"。差距主要来自三处：det 的输入分辨率与内存 arena 策略（形状集合有限离散，关掉 `dynamic_shape` 让 arena 生效后提速约 32%）、rec 的字典裁剪，以及会话复用。
 
 复现：`scripts/perf/compare_onnxocr.md`（需本机另备一份 OnnxOCR 检出与依赖环境）。
 
@@ -237,9 +305,14 @@ python scripts/perf/bench_device.py cuda    # GPU 基线
 
 | 后端 | 体积 | 相对速度 | 加权置信度 | 适用 |
 |---|---|---|---|---|
-| `ppocrv6-tiny` | 6.1MB | **0.58x** | 0.961 | 边缘设备、批量 |
-| `ppocrv6-small` | 30.5MB | 1.73x | **0.971** | 默认 |
-| `ppocrv5` | 15.6MB | 1.00x | 0.936 | 兼容旧项目 |
+| `ppocrv6-tiny` | 6.6MB | **1.95x** | 0.956 | 边缘设备、批量 |
+| `ppocrv6-medium` | 132.8MB | 1.11x | **0.981** | 版面复杂、追求精度 |
+| `ppocrv6-small` | 30.3MB | 1.03x | 0.973 | 默认 |
+| `ppocrv5` | 21.1MB | 1.00x | 0.928 | 兼容旧项目 |
+
+RTX 4070 Ti SUPER、8 张示例图、1 轮预热后 5 轮取中位，相对速度以 `ppocrv5` 为基准；加权置信度按字数加权（`scripts/perf/bench_tiers.py`，每档独立进程测量）。
+
+四个 v6 档位的置信度都高于 v5，**medium 档比 small 还快**——它虽然参数多，但 det 分辨率策略让耗时没上去，反而比 small 低了 7%。
 
 ## 项目结构
 
@@ -268,6 +341,7 @@ scripts/
 ├─ publish_weights.py      权重发布脚本
 ├─ perf/                   性能基准与 A/B 脚本
 │  ├─ bench_device.py      CPU / GPU 基线
+│  ├─ bench_tiers.py       各档位相对速度与置信度
 │  ├─ compare_onnxocr.md   与 OnnxOCR 的对比复现说明
 │  └─ ab_*.py              arena / cuDNN / 档位 A/B
 ├─ shrink_images.py        截图压缩
@@ -279,7 +353,7 @@ scripts/
 本项目在以下开源项目的启发与基础上构建，感谢原作者与社区：
 
 - **[OnnxOCR](https://github.com/jingsongliujing/OnnxOCR)** —— ONNX 推理链路、模型导出与文档结构化思路，是本项目的起点。
-- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR 系列模型与算法设计，本项目的三档后端权重全部来自该项目。
+- **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR 系列模型与算法设计，本项目的四档后端权重全部来自该项目。
 - **[DeepSeek-AI](https://github.com/deepseek-ai/DeepSeek-OCR)** —— OCR 精度优化的思路参考。
 
 若上述项目的成果对你的工作有帮助，请优先支持它们。

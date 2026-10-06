@@ -127,6 +127,23 @@ export NOOCR_MODELS_DIR=/data/ocr/models    # Linux/macOS
 set NOOCR_MODELS_DIR=D:\ocr\models          # Windows
 ```
 
+### 有哪些档位，各自多大
+
+```bash
+python -m noocr models --get ppocrv6-tiny
+```
+
+四个后端档位：
+
+| 后端 | 整档体积 | 适用 |
+|---|---|---|
+| `ppocrv6-tiny` | 6.6MB | 边缘设备、批量扫描，追求极致速度 |
+| `ppocrv6-small` | 30.3MB | 默认档，速度与精度均衡 |
+| `ppocrv6-medium` | 132.8MB | 服务器档，版面复杂、追求最高精度 |
+| `ppocrv5` | 21.1MB | 上一代，兼容旧项目 |
+
+四个档位共用同一份方向分类器与字典，所以四个都装也只有 190MB 左右。
+
 ### 下拉框里出现两个名字相同的后端
 
 不应该出现。若出现，说明 `ppocrv6` 与 `ppocrv6-small` 被同时当成了独立后端——两者是同一档位（前者是后者的别名）。更新到最新版即可。
@@ -164,9 +181,13 @@ python -m noocr 论文.pdf --dpi 300 --max-pages 10
 
 置信度低于 0.8 的行在 Web 界面里可以勾选「只看低置信」单独筛出来。整体偏低时：
 
-- 换用 `ppocrv6-small`（默认档，加权置信度 0.971，`ppocrv5` 为 0.936）；
+- 换更高精度的档位：`ppocrv6-medium` 加权置信度 0.981，是四档里最高的；`ppocrv6-small`（默认档）0.973；`ppocrv5` 0.928。数值来自 8 张示例图的字数加权实测（`scripts/perf/bench_tiers.py`）；
 - 提高输入图片分辨率；
 - 确认方向纠正没有被误判（倾斜角度识别错会连带拉低置信度）。
+
+### 想要最高精度，但medium 好像没比 small 快
+
+正常。`ppocrv6-medium` 参数是 small 的 4 倍，但检测阶段的分辨率策略按版面特征选，不同图上耗时差距很小——8 张示例图实测 medium 3163ms、small 3399ms，medium 反而略快。选它不会牺牲速度。
 
 ---
 
@@ -205,7 +226,7 @@ python scripts/perf/ab_tiers.py cuda        # 档位数 A/B（含输出一致性
 
 ### CPU 下怎么快一点
 
-- 用 `ppocrv6-tiny`（0.58x 速度，精度略降）；
+- 用 `ppocrv6-tiny`（四档里最快，8 张示例图比 `ppocrv5` 快约 1.95 倍，精度略降）；
 - 调 `--batch`（CPU 建议 6，GPU 可调大）；
 - 降低 PDF 的 `--dpi`。
 

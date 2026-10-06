@@ -139,6 +139,31 @@ r2 = iops.imread(str(test_img))
 check("str 可读且一致", r2 is not None and np.array_equal(r1, r2))
 check("不存在的文件返回 None", iops.imread(ROOT / "no_such_file_xyz.png") is None)
 
+print("\n=== 后端注册表（四档齐全、无重复）===")
+from noocr.backends import _CAPABILITY_SUMMARY, get_backend, list_backends
+
+names = [b["name"] for b in list_backends()]
+check("恰好四个后端", len(names) == 4, f"得到 {names}")
+check("四档齐全",
+      set(names) == {"ppocrv5", "ppocrv6-tiny", "ppocrv6-small",
+                     "ppocrv6-medium"}, f"得到 {set(names)}")
+# 回归：别名 ppocrv6 曾被当成独立后端登记，导致 WebUI 下拉出现两个 small
+check("无重复名", len(set(names)) == len(names))
+check("体积摘要齐全",
+      all(b.get("det_mb") and b.get("rec_mb") for b in list_backends()),
+      "有档位缺体积，CLI 与 WebUI 会显示 0MB")
+check("恰好一个默认档",
+      sum(1 for b in list_backends() if b.get("default")) == 1)
+check("能力摘要与注册表一致",
+      set(_CAPABILITY_SUMMARY) == set(names),
+      f"摘要 {set(_CAPABILITY_SUMMARY)} vs 注册 {set(names)}")
+try:
+    get_backend("ppocrv6-nonexistent")
+    check("未知后端报错", False, "竟然没抛异常")
+except KeyError as e:
+    check("未知后端报错且列出可用名",
+          "ppocrv6-medium" in str(e), f"消息缺 medium: {e}")
+
 print("\n=== _assign_width_buckets（固定档位，保证可复现）===")
 from noocr.backends.ppocr import PPOCRBackend
 

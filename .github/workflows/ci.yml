@@ -46,11 +46,14 @@ jobs:
         run: python scripts/check_readme.py
 
       - name: 单元测试（无需权重）
+        # tests/ 下是可直接执行的脚本而非 pytest 用例：导入即跑、结尾
+        # sys.exit()，交给 pytest 收集会在导入阶段报 INTERNALERROR。
         run: python tests/test_units.py
 
       # 仓库不携带权重（.gitignore已排除 models/），CI 必须自己拉。
       # 显式预热而不是依赖验收脚本隐式下载：下载失败时要能一眼看出是
-      # 网络问题而不是代码问题。三个后端都要，因为验收会逐个跑。
+      # 网络问题而不是代码问题。四个后端都要，因为验收会逐个跑——
+      # 少拉一个，CI 就测不到那一档，将来注册表漏了档位也发现不了。
       #
       # 若ModelScope 仓库被设为私有，需要在仓库 Settings → Secrets 里
       # 配MODELSCOPE_TOKEN；公开仓库则匿名即可，无需任何配置。
@@ -60,6 +63,7 @@ jobs:
         run: |
           python -m noocr models --get ppocrv6-tiny
           python -m noocr models --get ppocrv6-small
+          python -m noocr models --get ppocrv6-medium
           python -m noocr models --get ppocrv5
 
       - name: 端到端验收（拉起模型与 Web 服务）

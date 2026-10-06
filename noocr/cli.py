@@ -24,19 +24,47 @@ from typing import List, Optional
 from . import __version__
 
 
+def _disp_width(text: str) -> int:
+    """按终端显示宽度算字符串长度。
+
+    ``f"{s:<20}"`` 用的是字符数，而中文是全角、占两列——直接用
+    ``ljust`` 排版会错位。这里按东亚宽字符计 2、其余计 1。
+    """
+    import unicodedata
+
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1
+               for c in text)
+
+
+def _pad(text: str, width: int) -> str:
+    """按显示宽度左对齐补空格。
+
+    至少留一个空格：名称列可能带上 ``[默认]`` 标记而超宽，
+    ``max(0, ...)`` 会一个空格都不补，两列就粘在一起。
+    """
+    return text + " " * (max(1, width - _disp_width(text)) if width else 0)
+
+
 def _print_backends() -> None:
     from .backends import list_backends
 
+    #: 列宽按最长一行留够：名称列要放得下 ``ppocrv6-small[默认]``，
+    #: 说明列要放得下 ``34.5M参数，服务器档，版面复杂时精度最高``。
+    w_name, w_note = 24, 52
     print(f"NOOCR {__version__} —— 可用后端\n")
-    print(f"{'名称':<20}{'说明':<44}{'模型体积':>10}")
-    print("-" * 76)
+    print(_pad("名称", w_name) + _pad("说明", w_note) + "det+rec")
+    print("-" * (w_name + w_note + 10))
     for b in list_backends():
         name = b["name"] + ("  [默认]" if b.get("default") else "")
+        # 这里只det + rec。字典与 cls 算进体积会重复——v6 三档共用
+        # 同一份 cls 和字典，逐档相加会把同一个文件数三次。
         size = b.get("det_mb", 0) + b.get("rec_mb", 0)
-        print(f"{name:<20}{b.get('notes', ''):<44}{size:8.1f}MB")
+        print(_pad(name, w_name) + _pad(b.get("notes", ""), w_note)
+              + f"{size:8.1f}MB")
     print(
-        "\n提示: 极速选 ppocrv6-tiny（0.58x 速度，精度略降）；"
-        "高精度选 ppocrv6-small（可简写为 ppocrv6）；上一代兼容选 ppocrv5。"
+        "\n提示: 极速选 ppocrv6-tiny（体积最小）；"
+        "默认选 ppocrv6-small（可简写为 ppocrv6）；"
+        "版面复杂、追求精度选 ppocrv6-medium；上一代兼容选 ppocrv5。"
     )
 
 
@@ -308,8 +336,9 @@ def _print_help() -> None:
 
 选项:
   -b, --backend <名>    后端（默认 ppocrv6-small）
-                        ppocrv6-tiny  最快，体积 6MB
-                        ppocrv6-small  默认，精度最高
+                        ppocrv6-tiny  最快，体积 6.6MB
+                        ppocrv6-small  默认，精度与速度均衡
+                        ppocrv6-medium 精度最高，体积 133MB
                         ppocrv5        上一代，兼容性最好
   -o, --output <路径>   输出文件
   -f, --format <格式>   json（默认）/ text / md
