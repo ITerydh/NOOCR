@@ -18,6 +18,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Windows 控制台默认编码是 cp1252，打印中文会抛 UnicodeEncodeError。
+# CI 的 windows-latest 用 pwsh，默认编码同样不是 UTF-8。强制切到 UTF-8。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+else:  # pragma: no cover - Python 3.7 及以下
+    import io
+
+    sys.stdout = io.TextIOWrapper(
+        sys.stdout.buffer, encoding="utf-8", errors="replace"
+    )
+
 # (文件名, 语言名, 该语言里语言切换链接应有的写法)
 FILES: list[tuple[str, str, str]] = [
     ("README.md", "简体中文", "简体中文"),

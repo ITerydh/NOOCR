@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 from pathlib import Path
@@ -13,7 +14,32 @@ from typing import Any, Union
 
 from loguru import logger
 
-__all__ = ["logger", "setup", "add_file_sink", "remove_sink", "get_logger"]
+__all__ = ["logger", "setup", "add_file_sink", "remove_sink", "get_logger", "ensure_stdout_utf8"]
+
+
+def ensure_stdout_utf8() -> None:
+    """把标准输出/错误切到 UTF-8，避免非ASCII 文本触发编码异常。
+
+    Windows 控制台默认编码是 cp1252（CI 的 pwsh 同理），而本项目的日志与
+    CLI 输出含大量中文。缺了这层防护，``noocr backends`` 这类命令会直接
+    抛 ``UnicodeEncodeError`` 而中断——用户看到的是崩溃，而不是信息。
+
+    只在标准流支持 ``reconfigure`` 时改动；被测试替换成``io.StringIO``
+    的场景会自然跳过。``errors="replace"`` 兜底极少数无法映射的字符
+    （如 emoji），保证「显示为问号」好过「整个进程崩掉」。
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        # 非 TextIO（例如被替换成 BytesIO）会抛 ValueError/OSError，
+        # 那种情况直接跳过即可，不影响主流程
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+ensure_stdout_utf8()
 
 #: 本模块添加过的 sink 记账，避免重复添加并支持精确卸载。
 _SINKS: dict[str, int] = {}

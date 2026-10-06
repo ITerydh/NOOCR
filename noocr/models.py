@@ -12,7 +12,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .logging_config import get_logger
 
@@ -229,6 +229,24 @@ def _fetch_one(spec: ModelSpec, quiet: bool = False) -> None:
         log.info("已安装 {} ({:.1f}MB)", spec.rel_path, dst.stat().st_size / 1e6)
 
 
+def _hub_token() -> Optional[str]:
+    """读取访问 ModelScope 私有仓库所需的 token。
+
+    权重仓库默认是**公开**的，匿名即可下载。但两种情况下需要 token：
+
+    - 仓库被设为私有（此时匿名请求一律返回 404，且错误信息是
+      "文件内容为空"，极具误导性——看起来像文件不存在）；
+    - CI 等匿名环境想避免匿名限流。
+
+    读取顺序：``MODELSCOPE_TOKEN`` → ``MODELSCOPE_API_TOKEN``。
+    """
+    for name in ("MODELSCOPE_TOKEN", "MODELSCOPE_API_TOKEN"):
+        token = os.environ.get(name, "").strip()
+        if token:
+            return token
+    return None
+
+
 def _fetch_via_sdk(spec: ModelSpec, dst: Path, quiet: bool = False) -> None:
     """用 ModelScope SDK 拉取单个文件到指定路径。"""
     from modelscope.hub.file_download import model_file_download
@@ -238,6 +256,7 @@ def _fetch_via_sdk(spec: ModelSpec, dst: Path, quiet: bool = False) -> None:
             MODELSCOPE_REPO,
             spec.rel_path,
             local_dir=tmp,
+            token=_hub_token(),
         )
         if not Path(got).is_file():
             raise RuntimeError(f"SDK 未取到文件: {got}")
@@ -245,21 +264,35 @@ def _fetch_via_sdk(spec: ModelSpec, dst: Path, quiet: bool = False) -> None:
 
 
 def _fetch_via_http(spec: ModelSpec, dst: Path, quiet: bool = False) -> None:
-    """用 HTTPS 直链拉取单个文件，先写 ``.part`` 再原子替换。"""
+    """用 HTTPS 直链拉取单个文件，先写 ``.part`` 再原子替换。
+
+    私有仓库必须带 ``Authorization: Bearer <token>``，否则 ModelScope
+    返回的也是 404 而非 401——这点很容易被误判成"文件不存在"。
+    """
     import urllib.request
 
     url = f"{MODELSCOPE_RESOLVE}/{spec.rel_path}"
     tmp = dst.with_suffix(dst.suffix + ".part")
+    request = urllib.request.Request(url)
+    token = _hub_token()
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(url, timeout=300) as r:
+        with urllib.request.urlopen(request, timeout=300) as r:
             tmp.write_bytes(r.read())
         tmp.replace(dst)
     except Exception as e:
         tmp.unlink(missing_ok=True)
+        hint = (
+            ""
+            if token
+            else "\n若该仓库为私有仓库，请设置环境变量 "
+            "MODELSCOPE_TOKEN=<你的访问令牌>"
+        )
         raise RuntimeError(
             f"下载 {spec.rel_path} 失败: {e}\n"
             f"URL: {url}\n"
-            f"可手动从 {MODELSCOPE_REPO} 下载后放入 {dst}"
+            f"可手动从 {MODELSCOPE_REPO} 下载后放入 {dst}{hint}"
         ) from e
 
 

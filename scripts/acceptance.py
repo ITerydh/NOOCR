@@ -29,6 +29,19 @@ import sys
 import time
 from pathlib import Path
 
+# Windows 控制台默认 cp1252，打印中文会抛 UnicodeEncodeError。
+# CI 的 windows-latest 用 pwsh 同样不是 UTF-8，不做这一步会直接崩在
+# 第一条 check 的输出上。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+else:  # pragma: no cover - Python 3.7 及以下
+    import io
+
+    sys.stdout = io.TextIOWrapper(
+        sys.stdout.buffer, encoding="utf-8", errors="replace"
+    )
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_IMG = "noocr/web/static/ticket_train.jpg"
 

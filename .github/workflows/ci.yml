@@ -30,6 +30,15 @@ jobs:
           pip install -r requirements-cpu.txt
           pip install ruff
 
+      # Windows 控制台（pwsh）默认 cp1252，输出中文会抛 UnicodeEncodeError。
+      # 包内 logging_config 也会做同样防护，这里再加一层是为了让 pip
+      # 之类的第三方输出也不炸。PYTHONIOENCODING 对两个平台都有效。
+      - name: 固定控制台编码
+        run: |
+          echo "PYTHONIOENCODING=utf-8" >> "$GITHUB_ENV"
+          python -X utf8 -c "print('encoding ok')"
+        shell: bash
+
       - name: 静态检查
         run: ruff check noocr tests scripts
 
@@ -39,10 +48,15 @@ jobs:
       - name: 单元测试（无需权重）
         run: python tests/test_units.py
 
-      # 仓库不携带权重（.gitignore 已排除 models/），CI 必须自己拉。
+      # 仓库不携带权重（.gitignore已排除 models/），CI 必须自己拉。
       # 显式预热而不是依赖验收脚本隐式下载：下载失败时要能一眼看出是
       # 网络问题而不是代码问题。三个后端都要，因为验收会逐个跑。
+      #
+      # 若ModelScope 仓库被设为私有，需要在仓库 Settings → Secrets 里
+      # 配MODELSCOPE_TOKEN；公开仓库则匿名即可，无需任何配置。
       - name: 拉取权重
+        env:
+          MODELSCOPE_TOKEN: ${{ secrets.MODELSCOPE_TOKEN }}
         run: |
           python -m noocr models --get ppocrv6-tiny
           python -m noocr models --get ppocrv6-small
