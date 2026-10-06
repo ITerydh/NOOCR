@@ -1,3 +1,5 @@
+<img src="docs/images/title.jpg" alt="NewOnnxOCR" width="100%">
+
 # NOOCR
 
 [简体中文](README.md) | [English](README_EN.md) | [繁體中文](README_TW.md)
