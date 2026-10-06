@@ -721,24 +721,56 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 /* ---------- 统计条 ---------- */
-/* 统计条：8 个字段挤在一条横排里。原先 padding 11px + 16px 的
-   块状布局要占约 100px 纵向空间，在 600px 高的右栏里等于把图片
-   压掉六分之一。改为「键值同行」的紧凑排布，省下的高度全给图片。
-   gap 必须给足：实测 6px 时窄屏下相邻两组的标签与数值会粘连成
-   「12.36识别」这种读不出边界的串。 */
-.stats { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--border); }
-.stats div {
-  display: flex; align-items: baseline; gap: 8px;
-  flex: 0 1 auto; min-width: 118px; padding: 7px 16px 7px 14px;
-  border-right: 1px solid var(--border);
+/* 布局用 grid 而非 flex。
+   flex + wrap 的断点由像素余量随机决定，实测 1280 宽下会把「耗时」
+   孤零零甩到第二行，并在其后留下两个孤立的分隔圆点——::after 落在
+   换行处就成了无主的记号。grid 用固定列数表达「这 6 项是一组」，
+   宽度不够时整组一起换行，断点稳定、不留残迹。
+   auto-fit + minmax 让各列按内容分配宽度，标签与数值紧邻，
+   不会出现「后端 ······ v6 small」这种被摊开的间距。 */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, max-content));
+  gap: 0; border-bottom: 1px solid var(--border);
 }
-.stats div:last-child { border-right: none; }
+.stats div:not(.srow) {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 7px 0 7px 13px;
+  border-left: 1px solid var(--border);
+}
+/* 首格去掉左边框：整条统计条的最左侧不该有一道竖线，
+   它不分隔任何东西，只是让内容整体右移了一个缩进。 */
+.stats div:first-child:not(.srow) {
+  border-left: none; padding-left: 0;
+}
+/* 每格左侧留一截缩进 + 竖线作为分隔。
+   不用 ::after 画圆点：它在 flex 换行后会落在断点处变成无主记号
+   （实测 1280 下「耗时」被甩到第二行，身后跟着两个孤立圆点）。
+   换行后新行首格也会带竖线，纯 CSS 判断不了是否行首；
+   好在竖线语义是「这里起一格」，行首多一道不算错，
+   比无主的分隔记号干净。 */
 .stats .k {
   font-size: 10.5px; color: var(--text-mute); flex: none;
-  text-transform: uppercase; letter-spacing: .5px;
+  text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
 }
 .stats .v { font-size: 14px; font-weight: 650; font-family: var(--mono); white-space: nowrap; }
 .stats .v.hl { color: var(--accent); }
+
+/* 耗时明细：跨满所有列另起一行，视觉上从属于上一行的核心指标。
+   grid-column: 1 / -1 让它的换行与列数无关，
+   不会像 flex 那样出现 6+2 / 7+1 这类不齐的断法。 */
+.stats .srow {
+  grid-column: 1 / -1;
+  display: flex; gap: 14px; padding: 0 0 7px;
+}
+.stats .srow span { display: flex; align-items: baseline; gap: 5px; }
+.stats .srow i {
+  font-style: normal; font-size: 10.5px; color: var(--text-mute);
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.stats .srow b {
+  font-family: var(--mono); font-size: 11.5px;
+  font-weight: 500; color: var(--text-dim);
+}
 
 /* ---------- 表格 ---------- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -746,18 +778,22 @@ thead th {
   position: sticky; top: 0; z-index: 1;
   text-align: left; padding: 9px 16px; font-size: 11px; font-weight: 600;
   color: var(--text-mute); background: var(--panel-2);
-  border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .4px;
+  border-bottom: 1px solid var(--border); letter-spacing: .4px;
+  /* 表头不许折行。列宽由内联 style 给定（40/74/44px 都小于表头
+     文字本身需要），一旦放不下就会把「角度」压成竖排单字，
+     高度被撑高、整张表跟着歪。宁可让列宽略溢出也不要竖排。 */
+  white-space: nowrap;
 }
 tbody td { padding: 8px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
 tbody tr { cursor: pointer; transition: .1s; }
 tbody tr:hover { background: var(--panel-2); }
 tbody tr.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); width: 1%; white-space: nowrap; }
-.bar { display: flex; align-items: center; gap: 7px; }
-.bar .track { flex: 1; height: 4px; border-radius: 2px; background: var(--border); min-width: 40px; }
+.bar { display: flex; align-items: center; gap: 8px; }
+.bar .track { flex: 1; height: 4px; border-radius: 2px; background: var(--border); min-width: 40px; max-width: 60px; }
 .bar .fill { height: 100%; border-radius: 2px; background: var(--ok); }
 .bar.lo .fill { background: var(--err); }
-.bar .pc { font-family: var(--mono); font-size: 11.5px; width: 42px; text-align: right; }
+.bar .pc { font-family: var(--mono); font-size: 11.5px; width: 40px; text-align: right; flex: none; }
 
 /* ---------- 提示条 ---------- */
 /* 改为右下角浮层 toast。原先是嵌在卡片里的横幅，会把下方的页签和
@@ -980,9 +1016,9 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
           <table>
             <caption class="visually-hidden">本页识别明细，含文本、置信度与纠正角度</caption>
             <thead><tr>
-              <th scope="col" style="width:40px">#</th><th scope="col">识别文本</th>
-              <th scope="col" style="width:74px">置信度</th>
-              <th scope="col" style="width:44px">角度</th>
+              <th scope="col" style="width:38px">#</th><th scope="col">识别文本</th>
+              <th scope="col" style="width:108px">置信度</th>
+              <th scope="col" style="width:56px">纠正角</th>
             </tr></thead>
             <tbody id="tBody2"></tbody>
           </table>
@@ -1329,6 +1365,31 @@ async function run() {
   await runFetch("/api/ocr", "上传文件", true);
 }
 
+/* 后端注册名 -> 界面短标签。统计条与历史记录共用，
+   避免两处对同一个名字给出不同写法。 */
+function shortBackend(name) {
+  const raw = String(name || "");
+  return {
+    "ppocrv6-small": "v6 small", "ppocrv6-tiny": "v6 tiny", "ppocrv5": "v5",
+  }[raw] || raw.replace(/^ppocr/, "") || "—";
+}
+
+/* 统计条分两组渲染：核心 6 项平铺，耗时明细另起一行。
+   8 项平铺时实测 1280 宽下断成 6+2、1080 下 7+1，断法不均；
+   且换行会让统计条高度从 51px 涨到 101px，右栏图片区
+   本就不宽裕，这一半高度比信息本身更值钱。耗时明细属于
+   排障信息而非结果摘要，从属于核心指标是合理的层级关系。 */
+function renderStats(cells) {
+  const core = cells.slice(0, 6), detail = cells.slice(6);
+  $("stats").innerHTML =
+    core.map(([k, v, hl]) =>
+      `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`).join("") +
+    (detail.length
+      ? `<div class="srow">${detail.map(([k, v]) =>
+          `<span><i>${k}</i><b>${v}</b></span>`).join("")}</div>`
+      : "");
+}
+
 async function runFetch(url, label, useForm) {
   const btn = $("run");
   btn.disabled = true;
@@ -1398,17 +1459,16 @@ function apply(d) {
   const dv = (pages[0] && pages[0].device) || "";
   const devTag = /^cuda|^(dml|cann|directml)/i.test(dv) ? "GPU" : dv ? "CPU" : "·";
   const cells = [
-    ["后端", d.backend], ["设备", devTag, devTag === "GPU"],
+    ["后端", shortBackend(d.backend)], ["设备", devTag, devTag === "GPU"],
     ["页数", d.page_count], ["文本行", all.length],
     ["平均置信", (avg * 100).toFixed(1) + "%", true], ["耗时", d.total_time + "s"],
   ];
+  /* 耗时明细归入次要分组，由 renderStats 统一处理分行 */
   if (st) {
     cells.push(["检测", det.toFixed(0) + "ms"]);
     cells.push(["识别", (st.rec || 0).toFixed(0) + "ms"]);
   }
-  $("stats").innerHTML = cells
-    .map(([k, v, hl]) => `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`)
-    .join("");
+  renderStats(cells);
   pushHistory(d, all);
   syncPageNav();
   gotoPage(0);
@@ -1521,10 +1581,13 @@ function restoreHistory(i) {
   pages = [{ page_index: 0, width: 0, height: 0, lines, has_image: false }];
   docId = "";
   page = 0;
-  $("stats").innerHTML = [
-    ["后端", h.backend], ["记录时间", `${h.at.getHours()}:${String(h.at.getMinutes()).padStart(2, "0")}`],
+  /* 走 renderStats 而非直接拼 innerHTML：两处各写一套的话，
+     后端名归一、分组换行这些规则很快就会只在一处生效。 */
+  renderStats([
+    ["后端", shortBackend(h.backend)],
+    ["记录时间", `${h.at.getHours()}:${String(h.at.getMinutes()).padStart(2, "0")}`],
     ["页数", h.pages], ["文本行", h.lines], ["耗时", h.time + "s"],
-  ].map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  ]);
   $("viewer").classList.add("hide");
   $("vEmpty").classList.remove("hide");
   showEmpty("这是历史记录的文本结果", "页面图仅在本次会话的当前结果中可用");
