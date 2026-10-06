@@ -185,13 +185,17 @@ class PPOCRv6Backend(OCRBackend):
 
         self._det_session = cache.get_or_create(
             self._det_path, device=dev,
-            # 短边 736 是固定值，长边随图变化但下界固定
+            # 短边 736 恒定，长边只在 32 的倍数上变化且下界固定——形状集合
+            # 有限且离散，正是内存arena 擅长的场景，必须保持 dynamic_shape=False
+            # 以启用 arena。见下方说明。
             warmup_shape=(1, 3, self._DET_SHORT_SIDE, self._DET_SHORT_SIDE),
-            dynamic_shape=True,
+            dynamic_shape=False,
         )
         self._rec_session = cache.get_or_create(
             self._rec_path, device=dev,
             warmup_shape=(1, 3, self.rec_img_h, 320),
+            # rec 的宽度逐行变化且**无固定下界**，arena 在持续变化的形状下要
+            # 反复重规划，必须关闭。这是 _run_det 与 rec 唯一不同的取舍。
             dynamic_shape=True,
         )
         self._det_in = self._det_session.get_inputs()[0].name
@@ -248,8 +252,12 @@ class PPOCRv6Backend(OCRBackend):
         resized, shape = self._resize_for_det(image)
         blob = normalize_db(resized)[np.newaxis, ...]
         t_det0 = time.perf_counter()
-        prob = self._run_det(blob)
+        prob, det_hw = self._run_det(blob)
         t_det1 = time.perf_counter()
+        # _run_det 可能把输入补齐过，坐标换算必须用实际推理尺寸
+        if det_hw != (shape[2] * shape[0], shape[3] * shape[1]):
+            src_h, src_w = shape[0], shape[1]
+            shape = (src_h, src_w, det_hw[0] / src_h, det_hw[1] / src_w)
         det_boxes = self.db(prob, shape)
 
         page = PageResult(
@@ -352,22 +360,28 @@ class PPOCRv6Backend(OCRBackend):
         resized = cv2.resize(image, (new_w, new_h), interpolation=interp)
         return resized, (src_h, src_w, new_h / src_h, new_w / src_w)
 
-    def _run_det(self, blob: np.ndarray) -> np.ndarray:
-        """执行检测推理，形状非法时自动降级重试。
+    def _run_det(self, blob: np.ndarray) -> Tuple[np.ndarray, Tuple[int, int]]:
+        """执行检测推理，形状非法时自动补齐重试。
 
         :meth:`_resize_for_det` 已保证输入是 32 的倍数，但这个约束来自
         **ONNX 导出图的实现细节**，不是官方文档承诺——将来换权重版本
         可能就变了。因此这里再加一层运行期兜底：捕获形状类异常并把
         输入补到最近的安全尺寸后重试，而不是让整个OCR 调用崩掉。
 
+        Returns:
+            ``(概率图, (实际高, 实际宽))``。**必须**回传实际尺寸：补齐
+            改变了输入的空间尺寸，而坐标映射要靠它换算。调用方若仍用
+            补齐前的尺寸算ratio，所有检测框的坐标都会整体偏移，且偏移量
+            随图片长宽比变化——表现为"框总是偏一点"，极难定位。
+
         Args:
             blob: ``(1, 3, H, W)`` 的 float32 输入。
 
         Returns:
-            ``(1, 1, h, w)`` 的概率图，``h = H//4``、``w = W//4``。
+            ``(prob, (H, W))``，其中 ``prob`` 形状为 ``(1, 1, H//4, W//4)``。
         """
         try:
-            return self._det_session.run(self._det_out, {self._det_in: blob})[0]
+            return self._det_session.run(self._det_out, {self._det_in: blob})[0], blob.shape[2:]
         except Exception as e:
             msg = str(e)
             if "Shape mismatch" not in msg and "Resize" not in msg:
@@ -386,7 +400,8 @@ class PPOCRv6Backend(OCRBackend):
         )
         padded = np.ones((1, 3, safe_h, safe_w), np.float32)
         padded[:, :, :h, :w] = blob
-        return self._det_session.run(self._det_out, {self._det_in: padded})[0]
+        prob = self._det_session.run(self._det_out, {self._det_in: padded})[0]
+        return prob, (safe_h, safe_w)
 
     def _assign_width_buckets(self, widths: Sequence[int]) -> List[int]:
         """把每条文本映射到**固定**宽度档（与 v5 同源）。"""
@@ -498,6 +513,9 @@ class PPOCRv6Backend(OCRBackend):
         angles: List[float] = [0.0] * len(crops)
         img_h, img_w = 48, 192
         step = self._CLS_BATCH
+        # 需要旋转的 crop 下标。**不原地改 crops**：那是调用方持有的列表，
+        # 隐式副作用会让"再跑一次同样的输入得到不同结果"。
+        flipped: Dict[int, np.ndarray] = {}
         for start in range(0, len(crops), step):
             chunk = crops[start : start + step]
             if self._cls_blob is None or self._cls_blob.shape[0] < len(chunk):
@@ -518,5 +536,8 @@ class PPOCRv6Backend(OCRBackend):
                 idx = int(np.argmax(p))
                 if idx == 1 and float(p[idx]) > 0.9:
                     angles[start + i] = 180.0
-                    crops[start + i] = cv2.rotate(chunk[i], cv2.ROTATE_180)
+                    flipped[start + i] = cv2.rotate(chunk[i], cv2.ROTATE_180)
+        if flipped:
+            for idx, img in flipped.items():
+                crops[idx] = img
         return angles

@@ -159,6 +159,28 @@ class BackendPool:
                 self._instances[key] = backend
             return backend
 
+    def set_rec_batch_size(self, size: int) -> bool:
+        """调整已加载后端的识别批大小。
+
+        批大小是**运行时可调**的：CPU 上小批更快（bs=6 实测优于 24/48），
+        GPU 上大批更划算。用户改了值就该立刻生效，而不是必须重启服务。
+
+        Returns:
+            是否有后端实际接受了这个值。后端未实现该参数时返回 False，
+            调用方据此告知用户「该后端不支持调批」，而不是假装成功。
+        """
+        if size < 1:
+            raise ValueError(f"批大小必须 >= 1，收到 {size}")
+        with self._lock:
+            targets = list(self._instances.items())
+        applied = False
+        for (name, _dev), backend in targets:
+            if hasattr(backend, "rec_batch_size"):
+                backend.rec_batch_size = int(size)
+                applied = True
+                log.info("后端 {} 的识别批大小已设为 {}", name, size)
+        return applied
+
     def warm(self, names: Optional[List[str]] = None) -> Dict[str, str]:
         """预加载后端，返回 ``{后端名: 状态或错误信息}``。"""
         targets = names or [DEFAULT_BACKEND]
@@ -340,7 +362,9 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
 
     # ---------------------------------------------------------------- 识别
 
-    def _run(doc_id: str, backend_name: str, dpi: int, max_pages: int) -> Dict[str, Any]:
+    def _run(
+        doc_id: str, backend_name: str, dpi: int, max_pages: int, batch: int = 0
+    ) -> Dict[str, Any]:
         started = time.perf_counter()
         try:
             backend = backend_pool.get(backend_name)
@@ -349,6 +373,15 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
         except Exception as e:
             log.exception("后端加载失败")
             raise HTTPException(status_code=500, detail=f"后端加载失败: {e}") from e
+
+        # 批大小必须在 get() 之后：实例是首次 get 时才构造的，
+        # 先设参数会被随后新建的实例覆盖掉。
+        if (
+            batch > 0
+            and batch != getattr(backend, "rec_batch_size", None)
+            and not backend_pool.set_rec_batch_size(batch)
+        ):
+            log.debug("后端 {} 不支持运行时调整批大小", backend_name)
 
         try:
             doc = load_document(cache.get_source(doc_id), dpi=dpi, max_pages=max_pages)
@@ -369,17 +402,23 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
             raise HTTPException(status_code=500, detail=f"识别失败: {e}") from e
 
     @app.post("/api/ocr")
-    async def api_ocr(
+    def api_ocr(
         file: UploadFile = File(...),
         backend: str = Form(DEFAULT_BACKEND),
         dpi: int = Form(200),
         max_pages: int = Form(0),
+        batch: int = Form(0),
     ) -> Dict[str, Any]:
-        """上传文件并识别。"""
-        data = await file.read()
+        """上传文件并识别。
+
+        刻意声明为同步端点：识别是纯 CPU/GPU 阻塞计算，放进 ``async def``
+        会占死事件循环，期间所有请求（含首页静态资源）都无法响应。
+        Starlette 会把同步端点交给线程池执行，正是这里需要的语义。
+        """
+        data = file.file.read()
         if not data:
             raise HTTPException(status_code=400, detail="空文件")
-        return _run(cache.put_source(data), backend, dpi, max_pages)
+        return _run(cache.put_source(data), backend, dpi, max_pages, batch)
 
     @app.post("/api/ocr/path")
     def api_ocr_path(
@@ -387,12 +426,15 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
         backend: str = DEFAULT_BACKEND,
         dpi: int = 200,
         max_pages: int = 0,
+        batch: int = 0,
     ) -> Dict[str, Any]:
         """识别服务器本地路径上的文件。"""
         target = Path(path).expanduser()
         if not target.is_file():
             raise HTTPException(status_code=404, detail=f"文件不存在: {path}")
-        return _run(cache.put_source(target.read_bytes()), backend, dpi, max_pages)
+        return _run(
+            cache.put_source(target.read_bytes()), backend, dpi, max_pages, batch
+        )
 
     @app.post("/api/sample/{name}")
     def api_sample(
@@ -400,6 +442,7 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
         backend: str = DEFAULT_BACKEND,
         dpi: int = 200,
         max_pages: int = 0,
+        batch: int = 0,
     ) -> Dict[str, Any]:
         """识别内置示例图。
 
@@ -409,7 +452,9 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
         target = STATIC_DIR / safe
         if not target.is_file() or target.suffix.lower() not in _SAMPLE_SUFFIXES:
             raise HTTPException(status_code=404, detail=f"示例图不存在: {name}")
-        return _run(cache.put_source(target.read_bytes()), backend, dpi, max_pages)
+        return _run(
+            cache.put_source(target.read_bytes()), backend, dpi, max_pages, batch
+        )
 
     @app.get("/api/page/{doc_id}/{index}")
     def api_page_image(doc_id: str, index: int) -> Response:

@@ -5,37 +5,152 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NOOCR · 文字识别</title>
 <style>
+/* ============================================================
+   设计 token
+   ------------------------------------------------------------
+   颜色、字号、间距、圆角、阴影全部收敛到这里。此前各处随手
+   写死了 12 个字号、20 个间距值、7 个圆角值，导致界面看着
+   "大致整齐"却说不出哪里不对——根本原因是缺少体系。
+   ============================================================ */
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1e222b;
-  --border: #2a2f3a;
-  --text: #e6e8ec;
-  --text-dim: #9aa1ad;
-  --text-mute: #6b7280;
-  --accent: #5b8cff;
-  --accent-dim: #3a5bbf;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --err: #f87171;
-  --radius: 12px;
-  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  /* 表面：层级越高越亮 */
+  --bg:            #0d1117;
+  --panel:         #161b22;
+  --panel-2:       #1c2129;
+  --panel-3:       #262c36;   /* 浮层：下拉、tooltip、toast */
+  --inset:#0a0d12;   /* 凹陷：代码区、图像舞台 */
+
+  /* 描边 */
+  --border:        #2b313b;
+  --border-strong: #3d444f;
+
+  /* 文本（对比度全部 >= 4.5:1，WCAG AA）*/
+  --text:     #e6edf3;        /* 14.9:1 */
+  --text-dim: #a8b1bd;        /*  7.4:1 */
+  --text-mute: #7b8492;       /*  4.6:1  由 #6b7280 提亮而来 */
+
+  /* 主色。accent 用于文字/图标，accent-solid 用于实心按钮底
+     —— 白字压 #5b8cff 只有 3.16:1，达不到 AA，必须区分开 */
+  --accent:        #6f9bff;
+  --accent-solid:  #2f6ae0;   /* 白字 4.6:1 */
+  --accent-hover:  #3d78ea;
+  --accent-dim:    #3a5bbf;
+  --accent-subtle: rgba(111, 155, 255, .14);
+  --accent-border: rgba(111, 155, 255, .36);
+
+  /* 语义色：每色三件套（前景 / 底 / 边），消灭散落的 color-mix */
+  --ok:      #3fb950;  --ok-subtle:   rgba(63, 185, 80, .14);  --ok-border:   rgba(63, 185, 80, .36);
+  --warn:    #d29922;  --warn-subtle: rgba(210, 153, 34, .14); --warn-border: rgba(210, 153, 34, .36);
+  --err:     #f85149;  --err-subtle:  rgba(248, 81, 73, .14);  --err-border:  rgba(248, 81, 73, .36);
+  --info:    #58a6ff;  --info-subtle: rgba(88, 166, 255, .14); --info-border: rgba(88, 166, 255, .36);
+
+  /* 置信度色阶：OCR 专用 */
+  --conf-high: #3fb950;
+  --conf-mid:  #d29922;
+  --conf-low:  #f85149;
+
+  /* 间距：4px 基数 */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px;
+  --stage-max: 640px;
+
+  /* 圆角 */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-full: 999px;
+
+  /* 阴影：亮色下纯黑阴影几乎不可见，改用带 alpha 的中性色 */
+  --sh-1: 0 1px 2px rgba(1, 4, 9, .28);
+  --sh-2: 0 8px 24px rgba(1, 4, 9, .38);
+  --sh-3: 0 12px 32px rgba(1, 4, 9, .48);
+  --shadow-color: rgb(1 4 9 / .5);
+
+  /* 动效 */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+
+  --radius: var(--r-lg);
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas,
+          "Noto Sans Mono CJK SC", monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+             "Microsoft YaHei", sans-serif;
+  color-scheme: dark;
 }
+
+/* 手动切换优先于跟随系统；JS 写data-theme 到 <html> */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:     #ffffff;  --panel: #ffffff;  --panel-2: #f6f8fa;  --panel-3: #ffffff;
+  --inset:  #f6f8fa;
+  --border: #d0d7de;  --border-strong: #afb8c1;
+  --text:   #1f2328;  --text-dim: #59636e;
+  --text-mute: #6e7781;                /* 4.9:1，原 #8b93a1 仅 3.1:1 */
+  --accent: #0969da;  --accent-solid: #1f6feb;  --accent-hover: #1a63d8;
+  --accent-dim: #1d4ed8;
+  --accent-subtle: rgba(9, 105, 218, .09);
+  --accent-border: rgba(9, 105, 218, .34);
+  --ok: #1a7f37;  --warn: #9a6700;  --err: #cf222e;  --info: #0969da;
+  --ok-subtle: rgba(26, 127, 55, .10);  --ok-border: rgba(26, 127, 55, .32);
+  --warn-subtle: rgba(154, 103, 0, .10); --warn-border: rgba(154, 103, 0, .32);
+  --err-subtle: rgba(207, 34, 46, .10);  --err-border: rgba(207, 34, 46, .32);
+  --info-subtle: rgba(9, 105, 218, .09); --info-border: rgba(9, 105, 218, .32);
+  --conf-high: #1a7f37;  --conf-mid: #9a6700;  --conf-low: #cf222e;
+  --sh-1: 0 1px 2px rgba(31, 35, 40, .10);
+  --sh-2: 0 8px 24px rgba(31, 35, 40, .14);
+  --sh-3: 0 12px 32px rgba(31, 35, 40, .18);
+  --shadow-color: rgb(31 35 40 / .14);
+}
+
+/* 跟随系统（未手动设置时生效）*/
 @media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f4f5f7; --panel: #fff; --panel-2: #fafbfc; --border: #e2e5ea;
-    --text: #16181d; --text-dim: #5a6270; --text-mute: #8b93a1;
-    --accent: #2563eb; --accent-dim: #1d4ed8;
-    --ok: #059669; --warn: #b45309; --err: #dc2626;
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #ffffff;  --panel: #ffffff;  --panel-2: #f6f8fa;  --panel-3: #ffffff;
+    --inset: #f6f8fa;
+    --border: #d0d7de;  --border-strong: #afb8c1;
+    --text: #1f2328;  --text-dim: #59636e;  --text-mute: #6e7781;
+    --accent: #0969da;  --accent-solid: #1f6feb;  --accent-hover: #1a63d8;
+    --accent-dim: #1d4ed8;
+    --accent-subtle: rgba(9, 105, 218, .09);
+    --accent-border: rgba(9, 105, 218, .34);
+    --ok: #1a7f37;  --warn: #9a6700;  --err: #cf222e;  --info: #0969da;
+    --ok-subtle: rgba(26, 127, 55, .10);  --ok-border: rgba(26, 127, 55, .32);
+    --warn-subtle: rgba(154, 103, 0, .10); --warn-border: rgba(154, 103, 0, .32);
+    --err-subtle: rgba(207, 34, 46, .10);  --err-border: rgba(207, 34, 46, .32);
+    --info-subtle: rgba(9, 105, 218, .09); --info-border: rgba(9, 105, 218, .32);
+    --conf-high: #1a7f37;  --conf-mid: #9a6700;  --conf-low: #cf222e;
+    --sh-1: 0 1px 2px rgba(31, 35, 40, .10);
+    --sh-2: 0 8px 24px rgba(31, 35, 40, .14);
+    --sh-3: 0 12px 32px rgba(31, 35, 40, .18);
+    --shadow-color: rgb(31 35 40 / .14);
   }
 }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-               "Microsoft YaHei", sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg); color: var(--text);
-  font-size: 14px; line-height: 1.65;
+  font-size: 14px; line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 焦点环：此前所有 button 都没有，键盘用户无法判断焦点在哪 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* 尊重系统的动效偏好。加载态不能简单"不动"——那会丢失信息，
+   所以用静态图形替代旋转 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin { border-top-color: var(--accent) !important; opacity: .85; }
+  .dot.busy { animation: none !important; opacity: .6; }
 }
 
 /* ---------- 顶栏 ---------- */
@@ -62,15 +177,30 @@ header .spacer { margin-left: auto; }
 .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 
-/* 设备徽标：GPU 生效时点亮，降级到 CPU 时转为中性色 */
+/* 图标按钮：正方形、无边框，用于顶栏次要动作 */
+.iconbtn {
+  width: 30px; height: 30px; padding: 0; flex: none;
+  border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text-dim); font-size: 13px;
+}
+.iconbtn:hover:not(:disabled) {
+  background: var(--panel); color: var(--accent); border-color: var(--accent);
+}
+
+/* 设备徽标：GPU 生效时点亮，降级到 CPU 时转为中性色。
+   颜色全部走 token —— 此前硬编码 #10b981，在亮色近白底上只有
+   2.9:1，且与 --ok 不是同一个颜色 */
 .pill.dev { font-family: var(--mono); letter-spacing: .2px; }
 .pill.dev.gpu {
-  color: #10b981;
-  border-color: color-mix(in srgb, #10b981 45%, transparent);
-  background: color-mix(in srgb, #10b981 12%, transparent);
+  color: var(--ok);
+  border-color: var(--ok-border);
+  background: var(--ok-subtle);
 }
 .pill.dev.cpu { color: var(--text-mute); }
-.pill.dev.err { color: #ef4444; border-color: #ef4444; }
+.pill.dev.err {
+  color: var(--err); border-color: var(--err-border);
+  background: var(--err-subtle);
+}
 .pill.dev { cursor: pointer; user-select: none; transition: border-color .15s ease; }
 .pill.dev:hover { border-color: var(--accent); color: var(--accent); }
 .pill.dev.busy { opacity: .55; pointer-events: none; }
@@ -115,7 +245,27 @@ header .spacer { margin-left: auto; }
 /* ---------- 布局 ---------- */
 .wrap { max-width: 1560px; margin: 0 auto; padding: 20px 24px 40px; }
 .grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; }
+
+/* 1440 以下左栏收窄：330px 在 1280 屏上占比过高，右侧图文对照被挤窄 */
+@media (max-width: 1440px) { .grid { grid-template-columns: 300px minmax(0, 1fr); } }
 @media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } }
+/* 窄屏下左栏的卡片改双列，否则要滚很久才到结果区 */
+@media (max-width: 1080px) and (min-width: 720px) {
+  .grid > div:first-child {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
+  }
+  .grid > div:first-child .card + .card { margin-top: 0; }
+}
+@media (max-width: 720px) {
+  .wrap { padding: 14px 12px 28px; }
+  .grid { gap: 14px; }
+  header { padding: 0 12px; gap: 8px; }
+  .samples { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 460px) {
+  .samples { grid-template-columns: repeat(2, 1fr); }
+  .btn-line { flex-wrap: wrap; }
+}
 
 .card {
   background: var(--panel); border: 1px solid var(--border);
@@ -149,6 +299,14 @@ header .spacer { margin-left: auto; }
 .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-chip .sz { margin-left: auto; color: var(--text-mute); font-size: 11px; flex: none; }
 
+/* 全页拖放反馈。拖文件进窗口时给出明确落点，
+   否则用户不知道左栏那个小框是不是唯一能放的地方 */
+body.dragging::after {
+  content: ""; position: fixed; inset: 8px; z-index: 80;
+  border: 2px dashed var(--accent); border-radius: var(--r-lg);
+  background: var(--accent-subtle); pointer-events: none;
+}
+
 /* ---------- 表单 ---------- */
 .f { margin-bottom: 13px; }
 .f:last-child { margin-bottom: 0; }
@@ -171,10 +329,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 button {
   width: 100%; padding: 10px 14px; font-size: 13.5px; font-weight: 600;
   border: none; border-radius: 9px; cursor: pointer;
-  background: var(--accent); color: #fff; font-family: inherit;
-  transition: .14s; display: flex; align-items: center; justify-content: center; gap: 7px;
+  /* 必须用 --accent-solid：白字压 --accent(#6f9bff) 只有 3.16:1，
+     达不到 WCAG AA 的 4.5:1。压 #2f6ae0 是 4.6:1。 */
+  background: var(--accent-solid); color: #fff; font-family: inherit;
+  transition: background .14s, transform .1s; display: flex;
+  align-items: center; justify-content: center; gap: 7px;
 }
-button:hover:not(:disabled) { background: var(--accent-dim); }
+button:hover:not(:disabled) { background: var(--accent-hover); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .btn-line { display: flex; gap: 8px; margin-top: 9px; }
 .btn-line button {
@@ -187,18 +349,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 /* ---------- 示例图 ---------- */
+/* object-fit 用 contain而非 cover：票据类图片四边留白，
+   cover 会把文字裁掉，用户点进去发现「识别不全」其实是缩略图的问题 */
 .samples { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
 .samples figure {
-  position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+  position: relative; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden;
   cursor: pointer; border: 1.5px solid transparent; transition: .14s; background: var(--panel-2);
 }
-.samples img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.samples img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .samples figure:hover { border-color: var(--accent); transform: translateY(-1px); }
 .samples figure.on { border-color: var(--accent); }
 .samples figcaption {
-  position: absolute; inset: auto 0 0 0; padding: 10px 5px 3px;
-  font-size: 10px; text-align: center; color: #fff;
-  background: linear-gradient(transparent, rgba(0,0,0,.78));
+  position: absolute; inset: auto 0 0 0; padding: 12px 4px 3px;
+  font-size: 9.5px; text-align: center; color: #fff; line-height: 1.3;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .82));
 }
 
 /* ---------- 页签 ---------- */
@@ -232,19 +396,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 .out:empty::before { content: attr(data-ph); color: var(--text-mute); }
 
-/* 只读文本区的悬浮操作条 */
+/* 只读文本区的悬浮操作条。触屏没有 hover，必须常驻可见——
+   否则手机上根本找不到复制按钮 */
 .out-bar {
   position: absolute; top: 8px; right: 12px; display: flex; gap: 6px;
-  opacity: 0; transition: opacity .18s ease; z-index: 3;
+  opacity: 0; transition: opacity var(--dur-2) var(--ease-out); z-index: 3;
 }
-.pane:hover .out-bar { opacity: 1; }
+.pane:hover .out-bar, .out-bar:focus-within { opacity: 1; }
+@media (hover: none) { .out-bar { opacity: 1; } }
 .out-bar button {
   padding: 4px 10px; font-size: 11.5px; border-radius: 7px;
   background: var(--panel); color: var(--text-dim);
   border: 1px solid var(--border); backdrop-filter: blur(6px);
 }
 .out-bar button:hover { color: var(--accent); border-color: var(--accent); }
-.out-bar button.ok { color: #10b981; border-color: #10b981; }
+.out-bar button.ok { color: var(--ok); border-color: var(--ok-border); }
 
 /* ---------- 图文对照 ---------- */
 .viewer-bar {
@@ -259,6 +425,23 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   background: var(--panel); color: var(--text-dim); border: 1px solid var(--border);
 }
 .zoom button:hover:not(:disabled) { background: var(--panel-2); color: var(--accent); }
+#zRst { width: auto; padding: 0 9px; font-size: 11.5px; }
+
+/* 步进器：页数多时用它，页数少时用 pagepick按钮列。
+   64 页全列出来会把工具栏撑到换行，反而更难定位当前页。 */
+.stepper {
+  display: flex; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--panel);
+}
+.stepper button {
+  width: 24px; height: 24px; padding: 0; border: none;
+  background: transparent; color: var(--text-dim); font-size: 15px;
+  border-radius: 4px;
+}
+.stepper button:hover:not(:disabled) { background: var(--panel-2); color: var(--accent); }
+.pglabel { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); padding: 0 4px; }
+.toggles { display: flex; gap: 16px; flex-wrap: wrap; }
 .pagepick { display: flex; gap: 3px; flex-wrap: wrap; max-width: 320px; }
 .pagepick button {
   width: auto; padding: 3px 8px; font-size: 11.5px; font-weight: 500;
@@ -329,21 +512,56 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
 .bar .pc { font-family: var(--mono); font-size: 11.5px; width: 42px; text-align: right; }
 
 /* ---------- 提示条 ---------- */
-.note {
-  display: flex; align-items: flex-start; gap: 9px;
-  padding: 11px 14px; border-radius: 9px; font-size: 12.5px;
-  margin: 14px 16px; line-height: 1.55;
+/* 改为右下角浮层 toast。原先是嵌在卡片里的横幅，会把下方的页签和
+   统计条整体往下推——识别成功这种「无需用户处理」的信息也占据版面，
+   显得吵。浮层不占布局，且天然支持多条堆叠。 */
+.toasts {
+  position: fixed; right: 18px; bottom: 18px; z-index: 90;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: min(380px, calc(100vw - 36px)); pointer-events: none;
 }
-.note.err { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
-.note.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
-.note .x { margin-left: auto; cursor: pointer; opacity: .6; flex: none; }
-.note .x:hover { opacity: 1; }
+.toast {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 11px 13px; border-radius: var(--r-md); font-size: 12.5px;
+  line-height: 1.55; pointer-events: auto;
+  background: var(--panel-3); color: var(--text);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--sh-2); font-family: var(--font-ui);
+  animation: toast-in var(--dur-2) var(--ease-out);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.toast.out { animation: toast-out var(--dur-1) var(--ease-out) forwards; }
+@keyframes toast-out {
+  to { opacity: 0; transform: translateX(16px); }
+}
+.toast .ico { font-size: 13px; line-height: 1.45; flex: none; }
+.toast.err  { border-color: var(--err-border);  background: var(--err-subtle);  color: var(--err); }
+.toast.warn { border-color: var(--warn-border); background: var(--warn-subtle); color: var(--warn); }
+.toast.ok   { border-color: var(--ok-border);   background: var(--ok-subtle);   color: var(--ok); }
+.toast .x {
+  margin-left: auto; cursor: pointer; opacity: .55; flex: none;
+  background: none; border: none; padding: 0 2px; width: auto;
+  color: inherit; font-size: 12px; line-height: 1.45;
+}
+.toast .x:hover { opacity: 1; }
+.toast .x:focus-visible { outline: 2px solid currentColor; }
 .hide { display: none !important; }
 
 .empty { padding: 90px 24px; text-align: center; color: var(--text-mute); }
 .empty .ico { font-size: 34px; opacity: .35; }
 .empty .t { font-size: 13.5px; margin-top: 8px; }
 .empty .h { font-size: 12px; margin-top: 3px; }
+.norow { text-align: center; padding: 40px; color: var(--text-mute); }
+
+/* 只给读屏用的文本：让「结果视图」这类标题有语义，
+   但不在视觉上占位 */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 .spin {
   width: 13px; height: 13px; border-radius: 50%;
@@ -370,14 +588,15 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
     <div class="devpop hide" id="devPop"></div>
   </div>
   <div class="pill"><span class="dot" id="dot"></span><span id="status">连接中</span></div>
+  <button class="iconbtn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
 </header>
 
 <div class="wrap">
-  <div class="grid">
+  <main class="grid">
     <!-- ══════════ 左栏 ══════════ -->
     <div>
-      <div class="card">
-        <div class="card-h">输入</div>
+      <section class="card" aria-labelledby="hInput">
+        <div class="card-h" id="hInput">输入</div>
         <div class="card-b">
           <div class="drop" id="drop">
             <div class="ico">⬆</div>
@@ -391,30 +610,28 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-h">参数</div>
+      <section class="card" aria-labelledby="hParam">
+        <div class="card-h" id="hParam">参数</div>
         <div class="card-b">
           <div class="f">
             <label for="backend">识别后端</label>
             <select id="backend"></select>
           </div>
-          <div class="row">
-            <div class="f">
-              <label for="dpi">DPI（PDF）</label>
-              <input type="number" id="dpi" value="200" min="72" max="600" step="10">
-            </div>
-            <div class="f">
-              <label for="batch">批大小</label>
-              <input type="number" id="batch" value="6" min="1" max="64" step="1">
-            </div>
+          <div class="f">
+            <label for="dpi">DPI（PDF 渲染精度）</label>
+            <input type="number" id="dpi" value="200" min="72" max="600" step="10">
           </div>
           <div class="f">
             <label for="maxPages">最多页数（0 = 不限）</label>
             <input type="number" id="maxPages" value="0" min="0" step="1">
           </div>
-          <div class="f" style="display:flex;gap:16px;flex-wrap:wrap">
+          <div class="f">
+            <label for="batch">识别批大小（CPU 建议 6，GPU 可调大）</label>
+            <input type="number" id="batch" value="6" min="1" max="64" step="1">
+          </div>
+          <div class="f toggles">
             <label class="check"><input type="checkbox" id="showBox" checked>显示文本框</label>
-            <label class="check"><input type="checkbox" id="onlyLow">仅看低置信</label>
+            <label class="check"><input type="checkbox" id="onlyLow">只看低置信</label>
           </div>
           <button id="run"><span>开始识别</span></button>
           <div class="btn-line">
@@ -425,53 +642,60 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-h">示例<span class="n" id="sampleN"></span></div>
+      <section class="card" aria-labelledby="hSample">
+        <div class="card-h" id="hSample">示例<span class="n" id="sampleN"></span></div>
         <div class="card-b">
           <div class="samples" id="samples"></div>
         </div>
-      </div>
+      </section>
     </div>
 
     <!-- ══════════ 右栏 ══════════ -->
     <div>
-      <div class="card">
-        <div class="tabs" id="tabs">
-          <button data-t="text" class="on">文本<span class="badge" id="bText">0</span></button>
-          <button data-t="md">Markdown</button>
-          <button data-t="view">图文对照<span class="badge" id="bBox">0</span></button>
+      <section class="card" aria-labelledby="hResult">
+        <h2 id="hResult" class="visually-hidden">识别结果</h2>
+        <div class="tabs" id="tabs" role="tablist" aria-label="结果视图">
+          <button role="tab" data-t="text" class="on" aria-selected="true"
+                  aria-controls="p-text">文本<span class="badge" id="bText">0</span></button>
+          <button role="tab" data-t="md" aria-selected="false"
+                  aria-controls="p-md">Markdown</button>
+          <button role="tab" data-t="view" aria-selected="false"
+                  aria-controls="p-view">图文对照<span class="badge" id="bBox">0</span></button>
         </div>
 
-        <div class="note hide" id="note"><span id="noteTx"></span><span class="x" id="noteX">✕</span></div>
-
-        <div class="pane on" id="p-text">
+        <div class="pane on" id="p-text" role="tabpanel" aria-labelledby="hResult">
           <div class="out-bar">
             <button id="copyText">复制全文</button>
           </div>
           <div class="out" id="oText" data-ph="识别结果会显示在这里。"></div>
         </div>
 
-        <div class="pane" id="p-md">
+        <div class="pane" id="p-md" role="tabpanel" aria-labelledby="hResult">
           <div class="out-bar">
             <button id="copyMd">复制全文</button>
           </div>
           <div class="out" id="oMd" data-ph="Markdown 预览"></div>
         </div>
 
-        <div class="pane" id="p-view">
+        <div class="pane" id="p-view" role="tabpanel" aria-labelledby="hResult">
           <div class="viewer-bar">
-            <span class="stat" id="vStat">—</span>
+            <div class="stepper hide" id="pageStepper">
+              <button id="pgPrev" title="上一页" aria-label="上一页">‹</button>
+              <span class="pglabel"><span id="pgCur">1</span>/<span id="pgTot">1</span></span>
+              <button id="pgNext" title="下一页" aria-label="下一页">›</button>
+            </div>
             <div class="pagepick hide" id="pagePick"></div>
             <div class="spacer"></div>
             <label class="check"><input type="checkbox" id="thresh">只看 ≥ <span id="thv">80</span>%</label>
-            <input type="range" id="thr" min="0" max="100" value="80" style="width:88px">
+            <input type="range" id="thr" min="0" max="100" value="80" disabled
+                   aria-label="置信度阈值" style="width:88px">
             <div class="zoom">
-              <button id="zOut" title="缩小">−</button>
-              <button id="zRst" title="适应宽度" style="width:auto;padding:0 8px;font-size:11px">适应</button>
-              <button id="zIn" title="放大">+</button>
+              <button id="zOut" title="缩小" aria-label="缩小">−</button>
+              <button id="zRst" title="适应宽度">适应</button>
+              <button id="zIn" title="放大" aria-label="放大">+</button>
             </div>
           </div>
-          <div class="stats" id="stats"></div>
+          <div class="stats" id="stats" aria-live="polite"></div>
           <div class="split">
             <div class="stage" id="stage">
               <div class="empty" id="vEmpty">
@@ -483,12 +707,14 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
                 <img id="vImg" alt=""><canvas id="vCv"></canvas>
               </div>
             </div>
-<div class="side">
-      <div class="scroll" id="sideScroll">
+            <div class="side">
+              <div class="scroll" id="sideScroll">
                 <table>
+                  <caption class="visually-hidden">本页识别明细，含文本、置信度与纠正角度</caption>
                   <thead><tr>
-                    <th style="width:40px">#</th><th>文本</th>
-                    <th style="width:108px">置信度</th><th style="width:48px">角度</th>
+                    <th scope="col" style="width:40px">#</th><th scope="col">文本</th>
+                    <th scope="col" style="width:108px">置信度</th>
+                    <th scope="col" style="width:48px">角度</th>
                   </tr></thead>
                   <tbody id="tBody2"></tbody>
                 </table>
@@ -496,26 +722,40 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
-  </div>
+  </main>
 </div>
 
 <div class="hover-tip" id="tip"></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+/* 示例图目录。key 必须与 noocr/web/static/ 下的文件名一一对应，
+   多写不会报错（onerror 会移除卡片）但会显示成空白格。
+   已与目录实际内容核对：24 张全部收录。 */
 const SAMPLES = [
-  ["ticket_train", "火车票"], ["id_card_china", "身份证"],
-  ["receipt_bank_statement", "流水"], ["finance_shareholder_table", "股东表"],
-  ["doc_comparison_table", "对照表"], ["exam_math_primary", "数学卷"],
-  ["doc_english_single_column", "英文"], ["lang_japanese_poster", "日文"],
-  ["scene_vertical_plaque", "竖排"], ["medical_lab_report", "化验单"],
-  ["plate_vehicle_blue", "车牌"], ["doc_twocolumn_paper_highlight", "双栏"],
+  ["ticket_train", "火车票"], ["ticket_flight_itinerary", "行程单"],
+  ["id_card_china", "身份证"], ["receipt_bank_statement", "流水"],
+  ["receipt_clothing_care_label", "洗标"], ["finance_shareholder_table", "股东表"],
+  ["doc_comparison_table", "对照表"], ["doc_twocolumn_paper_highlight", "双栏论文"],
+  ["doc_english_single_column", "英文文档"], ["product_spec_sheet", "规格书"],
+  ["exam_math_primary", "数学卷"], ["exam_chinese_primary", "语文卷"],
+  ["medical_lab_report", "化验单"], ["medical_lab_report_tilted", "倾斜化验单"],
+  ["plate_vehicle_blue", "车牌"], ["scene_bank_branch", "银行网点"],
+  ["scene_road_sign_occluded", "遮挡路牌"], ["scene_vertical_plaque", "竖排招牌"],
+  ["lang_japanese_poster", "日文海报"], ["lang_japanese_wordcloud", "日文词云"],
+  ["lang_korean_quote_art", "韩文艺术字"], ["lang_french_signs", "法文标牌"],
+  ["lang_german_village_sign", "德文村牌"], ["lang_german_proverb_cartoon", "德文谚语"],
 ];
 
 let file = null, result = null, pages = [], page = 0;
 let srcUrl = null, zoom = 1, hoverIdx = -1, selIdx = -1, docId = "";
+let abortCtl = null, runSeq = 0;
+/* 当前识别来源：null = 用户上传的文件；非空 = 正在看的示例图 key。
+   不靠 file 是否为 null 来推断来源——示例图模式 file 恒为 null。 */
+let sampleKey = null;
 
 async function boot() {
   try {
@@ -617,7 +857,7 @@ async function setDevice(id) {
       note("设备已切换，但模型加载失败：" + w, "err");
     } else {
       const s = d.gpu_active ? "GPU" : "CPU";
-      note(`已切换到 ${s}${d.name && d.name !== "unknown" ? " · " + d.name : ""}`, "warn");
+      note(`已切换到 ${s}${d.name && d.name !== "unknown" ? " · " + d.name : ""}`, "ok");
     }
     // 已切换则用当前后端重跑，让用户立刻看到差异
     if (result) run();
@@ -677,6 +917,7 @@ $("file").onchange = e => { if (e.target.files.length) setFile(e.target.files[0]
 
 function setFile(f) {
   file = f;
+  sampleKey = null;
   $("chip").classList.remove("hide");
   $("chipNm").textContent = f.name;
   $("chipSz").textContent = fmtSize(f.size);
@@ -694,11 +935,10 @@ async function runSample(key, label, fig) {
   document.querySelectorAll(".samples figure").forEach(x => x.classList.remove("on"));
   if (fig) fig.classList.add("on");
   file = null;
+  sampleKey = key;
   $("chip").classList.add("hide");
   setSrc(`/static/${key}.jpg`, `${label}.jpg`);
-  const qs = `backend=${$("backend").value}` +
-    `&dpi=${$("dpi").value}&max_pages=${$("maxPages").value}`;
-  await runFetch(`/api/sample/${encodeURIComponent(key)}.jpg?${qs}`, "示例图");
+  await run();
 }
 
 function setSrc(url, name) {
@@ -718,8 +958,26 @@ function setSrc(url, name) {
 /* ---------- 识别 ---------- */
 $("run").onclick = run;
 $("backend").onchange = () => { if (result) run(); };
+/* 参数改动也触发重跑：用户调了 DPI / 批大小却要手动再点一次开始，
+   会以为改动没生效 */
+["dpi", "maxPages", "batch"].forEach(id =>
+  $(id).addEventListener("change", () => { if (result) run(); }));
 
+/* 当前输入来源：上传的文件，或正在看的示例图。
+   记成显式状态而不是靠 file 是否为 null 推断——示例图模式下 file 恒为
+   null，若靠推断，切设备后点「重新识别」就会走进「请先选择文件」的
+   死路，尽管界面上明明还显示着那张图。 */
 async function run() {
+  if (sampleKey) {
+    const qs = new URLSearchParams({
+      backend: $("backend").value,
+      dpi: $("dpi").value,
+      max_pages: $("maxPages").value,
+      batch: $("batch").value,
+    });
+    await runFetch(`/api/sample/${encodeURIComponent(sampleKey)}.jpg?${qs}`, "示例图");
+    return;
+  }
   if (!file) { note("请先选择文件，或点击左侧示例图", "warn"); return; }
   await runFetch("/api/ocr", "上传文件", true);
 }
@@ -730,8 +988,11 @@ async function runFetch(url, label, useForm) {
   btn.innerHTML = '<span class="spin"></span><span>识别中</span>';
   $("dot").className = "dot busy";
   $("status").textContent = "识别中";
-  hideNote();
   try {
+    /* 新的识别请求让旧的失效：用户连点两次示例图时，
+       先发的响应可能后到，会把结果覆盖成用户已经不想看的那张 */
+    if (abortCtl) abortCtl.abort();
+    abortCtl = new AbortController();
     let req;
     if (useForm) {
       const fd = new FormData();
@@ -739,9 +1000,10 @@ async function runFetch(url, label, useForm) {
       fd.append("backend", $("backend").value);
       fd.append("dpi", $("dpi").value);
       fd.append("max_pages", $("maxPages").value);
-      req = fetch(url, { method: "POST", body: fd });
+      fd.append("batch", $("batch").value);
+      req = fetch(url, { method: "POST", body: fd, signal: abortCtl.signal });
     } else {
-      req = fetch(url, { method: "POST" });
+      req = fetch(url, { method: "POST", signal: abortCtl.signal });
     }
     const res = await req;
     const data = await res.json();
@@ -750,7 +1012,8 @@ async function runFetch(url, label, useForm) {
     const w = (data.warnings || []).join("；");
     if (w) note(w, "warn");
   } catch (e) {
-    note("识别失败：" + e.message, "err");
+    /* 被新请求取代是正常路径，不该弹错误 */
+    if (e.name !== "AbortError") note("识别失败：" + e.message, "err");
   } finally {
     btn.disabled = false;
     btn.innerHTML = "<span>开始识别</span>";
@@ -765,6 +1028,10 @@ function apply(d) {
   docId = d.doc_id || "";
   page = 0;
   selIdx = hoverIdx = -1;
+  /* 缓存破坏键。原先用 total_time——同一张图两次识别耗时接近，
+     浏览器会拿回旧图，表现为「重新识别了但标注还是上一轮的」。
+     用单调递增的序号，每轮必定是新URL。 */
+  runSeq += 1;
 
   const all = pages.flatMap(p => p.lines);
   const native = d.native_text;
@@ -794,24 +1061,36 @@ function apply(d) {
   $("stats").innerHTML = cells
     .map(([k, v, hl]) => `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`)
     .join("");
-  $("vStat").textContent = `${d.backend} · ${d.page_count} 页 · ${all.length} 行`;
-
   buildPagePick();
   gotoPage(0);
 }
 
-/* 页码按钮：仅多页时出现 */
+/* 页码导航：页数少时列按钮，超过阈值改用步进器。
+   64 页全部铺开会把工具栏挤到换行，且当前页需要滚动才能看到。 */
+const PAGE_PICK_MAX = 12;
+
 function buildPagePick() {
-  const box = $("pagePick");
-  box.innerHTML = "";
-  if (pages.length < 2) { box.classList.add("hide"); return; }
-  box.classList.remove("hide");
-  pages.forEach((_, i) => {
-    const b = document.createElement("button");
-    b.textContent = i + 1;
-    b.onclick = () => gotoPage(i);
-    box.appendChild(b);
-  });
+  const pick = $("pagePick");
+  const step = $("pageStepper");
+  pick.innerHTML = "";
+  if (pages.length < 2) {
+    pick.classList.add("hide");
+    step.classList.add("hide");
+    return;
+  }
+  const useStepper = pages.length > PAGE_PICK_MAX;
+  pick.classList.toggle("hide", useStepper);
+  step.classList.toggle("hide", !useStepper);
+  $("pgTot").textContent = pages.length;
+
+  if (!useStepper) {
+    pages.forEach((_, i) => {
+      const b = document.createElement("button");
+      b.textContent = i + 1;
+      b.onclick = () => gotoPage(i);
+      pick.appendChild(b);
+    });
+  }
 }
 
 /* 切页：图片、明细表、标注三者同步 */
@@ -822,33 +1101,63 @@ function gotoPage(i) {
 
   const p = pages[page];
   if (p.has_image && docId) {
-    setSrc(`/api/page/${docId}/${page}?v=${result.total_time}`, `第 ${page + 1} 页`);
+    setSrc(`/api/page/${docId}/${page}?v=${runSeq}`, `第 ${page + 1} 页`);
   }
 
-  const lines = p.lines || [];
-  const base = pages.slice(0, page).reduce((a, q) => a + (q.lines || []).length, 0);
-  $("tBody2").innerHTML = lines.length
-    ? lines.map((l, k) => `<tr data-i="${k}">
-        <td class="n">${base + k + 1}</td>
-        <td class="tx">${esc(l.text)}</td>
-        <td><div class="bar${l.confidence < 0.8 ? " lo" : ""}">
-          <div class="track"><div class="fill" style="width:${(l.confidence * 100).toFixed(0)}%"></div></div>
-          <span class="pc">${(l.confidence * 100).toFixed(0)}%</span></div></td>
-        <td class="n">${l.angle}°</td></tr>`).join("")
-    : `<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-mute)">本页无文本行</td></tr>`;
-
+  renderRows();
   [...$("pagePick").children].forEach((b, k) => b.classList.toggle("on", k === page));
+  $("pgCur").textContent = page + 1;
+  $("pgPrev").disabled = page === 0;
+  $("pgNext").disabled = page >= pages.length - 1;
   $("stage").scrollTop = 0;
   $("stage").scrollLeft = 0;
   $("sideScroll").scrollTop = 0;
   requestAnimationFrame(() => { fitWidth(); draw(); });
 }
 
+$("pgPrev").onclick = () => gotoPage(page - 1);
+$("pgNext").onclick = () => gotoPage(page + 1);
+
+/* 明细表。onlyLow 打开时只留低置信行——排查识别质量时
+   「哪些行没认准」比「全部行」有用得多。 */
+function renderRows() {
+  const lines = currentLines();
+  const base = pages.slice(0, page).reduce((a, q) => a + (q.lines || []).length, 0);
+  const onlyLow = $("onlyLow").checked;
+
+  if (!lines.length) {
+    $("tBody2").innerHTML =
+      `<tr><td colspan="4" class="norow">本页无文本行</td></tr>`;
+    return;
+  }
+  const rows = [];
+  lines.forEach((l, k) => {
+    const lo = l.confidence < 0.8;
+    if (onlyLow && !lo) return;
+    rows.push(`<tr data-i="${k}">
+      <td class="n">${base + k + 1}</td>
+      <td class="tx">${esc(l.text)}</td>
+      <td><div class="bar${lo ? " lo" : ""}">
+        <div class="track"><div class="fill" style="width:${(l.confidence * 100).toFixed(0)}%"></div></div>
+        <span class="pc">${(l.confidence * 100).toFixed(0)}%</span></div></td>
+      <td class="n">${l.angle}°</td></tr>`);
+  });
+  $("tBody2").innerHTML = rows.length
+    ? rows.join("")
+    : `<tr><td colspan="4" class="norow">本页无低置信行</td></tr>`;
+  syncRows();
+}
+
 /* ---------- 页签 ---------- */
 const TABS = ["text", "md", "view"];
 
 function tab(t) {
-  [...$("tabs").children].forEach(x => x.classList.toggle("on", x.dataset.t === t));
+  [...$("tabs").children].forEach(x => {
+    const on = x.dataset.t === t;
+    x.classList.toggle("on", on);
+    /* role=tab 必须同步 aria-selected，否则读屏用户听到的是「全部未选中」 */
+    x.setAttribute("aria-selected", String(on));
+  });
   TABS.forEach(k => $("p-" + k).classList.toggle("on", k === t));
   if (t === "view") requestAnimationFrame(fitWidth);
 }
@@ -903,68 +1212,134 @@ function currentSize() {
   return { w: p.width || $("vImg").naturalWidth, h: p.height || $("vImg").naturalHeight };
 }
 
+/* 容差按**屏幕像素**给，再换算回图像坐标。
+   固定 ±2 图像像素在 zoom=0.25 时等于屏幕 0.5px，几乎点不中；
+   在 zoom=4 时又等于 8px，容易误选相邻行。 */
+const HIT_TOL_PX = 4;
+
 function hitTest(e) {
   const rect = $("vImg").getBoundingClientRect();
+  if (!rect.width) return -1;
   const x = (e.clientX - rect.left) / zoom;
   const y = (e.clientY - rect.top) / zoom;
+  const tol = HIT_TOL_PX / zoom;
   const lines = currentLines();
   for (let i = lines.length - 1; i >= 0; i--) {
     const b = lines[i].box;
     if (!b) continue;
-    const xs = b.map(p => p[0]), ys = b.map(p => p[1]);
-    if (x >= Math.min(...xs) - 2 && x <= Math.max(...xs) + 2 &&
-        y >= Math.min(...ys) - 2 && y <= Math.max(...ys) + 2) return i;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [px, py] of b) {
+      if (px < x0) x0 = px;
+      if (px > x1) x1 = px;
+      if (py < y0) y0 = py;
+      if (py > y1) y1 = py;
+    }
+    if (x >= x0 - tol && x <= x1 + tol && y >= y0 - tol && y <= y1 + tol) return i;
   }
   return -1;
 }
 
+/* 标注颜色从 CSS 变量读，这样主题切换后重绘即可跟随，
+   不必在 JS 里维护两套色值（此前硬编码 #5b8cff/#34d399/#f87171，
+   亮色主题下框几乎看不见）。 */
+const cssVar = (n) =>
+  getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+let drawQueued = false;
 function draw() {
+  /* 同一帧内多次调用（如切页会连着改 zoom / selIdx）合并成一次绘制 */
+  if (drawQueued) return;
+  drawQueued = true;
+  requestAnimationFrame(() => { drawQueued = false; paint(); });
+}
+
+function paint() {
   const cv = $("vCv"), img = $("vImg");
   if (!result || !pages.length || !img.naturalWidth) return;
   const { w, h } = currentSize();
-  cv.width = w; cv.height = h;
+
+  /* HiDPI：canvas 位图按设备像素比放大，否则在 2x 屏上框线发虚 */
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
   const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   ctx.lineJoin = "round";
 
   const min = +$("thr").value / 100;
   const only = $("thresh").checked;
+  const showBox = $("showBox").checked;
   const lines = currentLines();
   const fsz = Math.max(11, Math.round(h * 0.018));
+
+  if (!showBox) {
+    /* 只画选中/悬停的那一个：关掉全部框后仍需能定位当前行 */
+    lines.forEach((l, i) => {
+      if (!l.box || (i !== hoverIdx && i !== selIdx)) return;
+      paintBox(ctx, l, i, true, fsz, h, true);
+    });
+    return;
+  }
 
   lines.forEach((l, i) => {
     if (!l.box) return;
     if (only && l.confidence < min) return;
-    const strong = l.confidence >= 0.9;
-    const on = i === hoverIdx || i === selIdx;
-
-    ctx.beginPath();
-    l.box.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-    ctx.closePath();
-    ctx.lineWidth = on ? 3 : 1.6;
-    ctx.strokeStyle = on ? "#5b8cff"
-      : strong ? "rgba(52,211,153,.9)" : "rgba(248,113,113,.9)";
-    ctx.fillStyle = on ? "rgba(91,140,255,.18)"
-      : strong ? "rgba(52,211,153,.08)" : "rgba(248,113,113,.06)";
-    ctx.fill(); ctx.stroke();
-
-    if (!on && fsz * 2 < h * 0.05) return;
-    const [lx, ly] = l.box[0];
-    const label = String(i + 1);
-    ctx.font = `600 ${fsz}px ui-monospace, monospace`;
-    const tw = ctx.measureText(label).width;
-    const bx = Math.max(0, lx - 2), by = Math.max(fsz + 2, ly - fsz - 4);
-    ctx.fillStyle = on ? "#5b8cff" : strong ? "#34d399" : "#f87171";
-    ctx.fillRect(bx, by - fsz, tw + 9, fsz + 4);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(label, bx + 4.5, by - 3);
+    paintBox(ctx, l, i, i === hoverIdx || i === selIdx, fsz, h, false);
   });
 }
 
-$("showBox").onchange = draw;
-$("onlyLow").onchange = draw;
-$("thresh").onchange = () => { $("thv").textContent = $("thr").value; draw(); };
+function paintBox(ctx, l, i, on, fsz, h, hideLabel) {
+  const accent = cssVar("--accent");
+  const strong = l.confidence >= 0.9;
+  /* 描边与填充共用同一个色值，只用 alpha 区分强弱。这样换主题时
+     只要色值跟着变，浓淡关系自动保持——若用 hex 手工拼 rgba，
+     换主题后浓度会失衡。 */
+  const color = on ? accent
+    : strong ? cssVar("--conf-high") : cssVar("--conf-low");
+
+  ctx.beginPath();
+  l.box.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.lineWidth = on ? 3 : 1.6;
+
+  ctx.globalAlpha = on ? 0.18 : strong ? 0.10 : 0.07;
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.globalAlpha = on ? 1 : 0.85;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (hideLabel) return;
+  /* 框太密时不画序号，否则标签互相压盖反而更乱 */
+  if (!on && fsz * 2 < h * 0.05) return;
+  const [lx, ly] = l.box[0];
+  const label = String(i + 1);
+  ctx.font = `600 ${fsz}px ui-monospace, monospace`;
+  const tw = ctx.measureText(label).width;
+  const bx = Math.max(0, lx - 2), by = Math.max(fsz + 2, ly - fsz - 4);
+  ctx.fillStyle = color;
+  ctx.fillRect(bx, by - fsz, tw + 9, fsz + 4);
+  /* 序号文字取背景色，与标签底色对比最大且随主题自动反转 */
+  ctx.fillStyle = cssVar("--bg");
+  ctx.fillText(label, bx + 4.5, by - 3);
+}
+
+/* 阈值滑杆只在勾选后才生效。未勾选时拖动它毫无效果，
+   却让人以为筛选没生效——控件说谎。 */
+$("thresh").onchange = () => { syncThr(); draw(); };
 $("thr").oninput = () => { $("thv").textContent = $("thr").value; draw(); };
+function syncThr() {
+  const on = $("thresh").checked;
+  $("thr").disabled = !on;
+  $("thr").style.opacity = on ? "1" : ".4";
+}
+
+$("showBox").onchange = draw;
+$("onlyLow").onchange = renderRows;
 
 /* ---------- 缩放 ---------- */
 function fitWidth() {
@@ -973,11 +1348,20 @@ function fitWidth() {
   zoom = Math.min(1, (st.clientWidth - 4) / img.naturalWidth);
   applyZoom();
 }
+/* 缩放用 transform: scale 而非改 width/height。
+   改尺寸会触发重排 + 重新栅格化，放大后图像会糊；transform 走合成层，
+   位图只栅格化一次，放大到 4x 依然清晰。 */
 function applyZoom() {
   const img = $("vImg"), v = $("viewer");
-  v.style.width = img.naturalWidth * zoom + "px";
-  img.style.width = img.naturalWidth * zoom + "px";
-  img.style.height = img.naturalHeight * zoom + "px";
+  /* viewer 的布局尺寸保持为原始尺寸，靠 transform 视觉缩放，
+     这样.stage 的滚动区域始终与视觉大小一致 */
+  v.style.width = img.naturalWidth + "px";
+  img.style.width = img.naturalWidth + "px";
+  img.style.height = img.naturalHeight + "px";
+  v.style.transform = `scale(${zoom})`;
+  /* transform 不改变布局盒子，滚动容器需要显式补偿占位 */
+  v.style.marginRight = (img.naturalWidth * zoom - img.naturalWidth) + "px";
+  v.style.marginBottom = (img.naturalHeight * zoom - img.naturalHeight) + "px";
   draw();
 }
 $("zIn").onclick = () => { zoom = Math.min(4, zoom * 1.25); applyZoom(); };
@@ -1004,7 +1388,7 @@ async function copyText(text, btn) {
     ta.remove();
   }
   note(ok ? `已复制 ${text.length} 个字符到剪贴板` : "复制失败，请手动选中复制",
-       ok ? "warn" : "err");
+       ok ? "ok" : "err");
   if (ok && btn) {
     const old = btn.textContent;
     btn.textContent = "已复制";
@@ -1032,13 +1416,135 @@ function save(name, content, mime) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/* ---------- 提示 ---------- */
+/* ---------- 提示（toast）---------- */
+/* 取代原先嵌在卡片里的横幅：横幅会占据版面并把下方内容整体下推，
+   而「已复制」「已切换设备」这类信息用户根本不需要做操作。 */
+
+const TOAST_ICON = { err: "✕", warn: "!", ok: "✓" };
+
 function note(msg, kind) {
-  $("noteTx").textContent = msg;
-  $("note").className = "note " + (kind || "warn");
+  const k = kind === "err" ? "err" : kind === "ok" ? "ok" : "warn";
+  const box = $("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + k;
+  /* 错误用 role=alert 立即打断读屏，普通提示走容器上的 aria-live */
+  if (k === "err") el.setAttribute("role", "alert");
+  el.innerHTML =
+    `<span class="ico">${TOAST_ICON[k]}</span><span class="msg">${esc(msg)}</span>` +
+    `<button class="x" aria-label="关闭提示">✕</button>`;
+  const kill = () => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 200);
+  };
+  el.querySelector(".x").onclick = kill;
+  box.appendChild(el);
+  /* 错误留久一点：它通常需要用户据此行动 */
+  setTimeout(kill, k === "err" ? 9000 : 3600);
+  /* 最多同时留4 条，防止连续识别把屏幕塞满 */
+  while (box.children.length > 4) box.firstElementChild.remove();
 }
-function hideNote() { $("note").classList.add("hide"); }
-$("noteX").onclick = hideNote;
+
+/* ---------- 主题 ---------- */
+/* 三态：未设置→ 跟随系统；手动切换在 深色/浅色 之间。
+   写 data-theme 到 <html> 让 CSS 的 :root[data-theme="light"] 生效，
+   移除属性则回退到 @media (prefers-color-scheme) 那条规则。 */
+const THEME_KEY = "noocr.theme";
+
+function currentTheme() {
+  const set = localStorage.getItem(THEME_KEY);
+  if (set === "light" || set === "dark") return set;
+  return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function applyTheme(t) {
+  if (t === "light" || t === "dark") {
+    document.documentElement.setAttribute("data-theme", t);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  $("themeBtn").textContent = t === "light" ? "☀" : "☾";
+  $("themeBtn").title = (t === "light" ? "浅色" : "深色") + "主题，点击切换";
+  /* canvas 标注色按 CSS 变量取，主题变了必须重绘，否则框还是旧主题的颜色 */
+  draw();
+}
+
+/* 尚未手动设置时，系统主题变化要跟随 */
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  if (!localStorage.getItem(THEME_KEY)) applyTheme(currentTheme());
+});
+
+$("themeBtn").onclick = () => {
+  const next = currentTheme() === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+};
+
+/* 在脚本末尾 boot 前立即应用，避免深色用户看到一瞬间的白闪 */
+applyTheme(currentTheme());
+
+/* ---------- 全局拖放 + 粘贴 ---------- */
+/* 拖放区只覆盖左侧一小块，用户从桌面往窗口里拖时命中率很低。
+   在 window 上兜一份，并把整页作为拖放反馈区。 */
+let dragDepth = 0;
+
+addEventListener("dragenter", e => {
+  if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+  dragDepth++;
+  document.body.classList.add("dragging");
+});
+addEventListener("dragleave", () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) document.body.classList.remove("dragging");
+});
+addEventListener("dragover", e => {
+  if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault();
+});
+addEventListener("drop", e => {
+  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  /* 已经由 drop 区处理过的不重复处理，否则会触发两次识别 */
+  if (e.target.closest && e.target.closest("#drop")) return;
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove("dragging");
+  setFile(e.dataTransfer.files[0]);
+});
+
+/* 粘贴图片：截图后直接 Ctrl+V 是最常见的输入方式 */
+addEventListener("paste", e => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith("image/")) {
+      const f = it.getAsFile();
+      if (f) {
+        e.preventDefault();
+        /* 剪贴板里的文件没有名字，补一个带时间戳的便于导出 */
+        setFile(new File([f], `粘贴_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`, { type: f.type }));
+        return;
+      }
+    }
+  }
+});
+
+/* ---------- 快捷键 ---------- */
+addEventListener("keydown", e => {
+  /* 输入类控件内不劫持按键，否则用户没法在输入框里打字 */
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); return; }
+  if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); run(); return; }
+  if (e.key === "o" || e.key === "O") { e.preventDefault(); $("file").click(); return; }
+  if (e.key === "1") { tab("text"); return; }
+  if (e.key === "2") { tab("md"); return; }
+  if (e.key === "3") { tab("view"); return; }
+  if (e.key === "ArrowLeft" && pages.length > 1) { gotoPage(page - 1); return; }
+  if (e.key === "ArrowRight" && pages.length > 1) { gotoPage(page + 1); return; }
+  /* +/- 缩放。放在最后，避免和上面的数字键冲突判断 */
+  if (e.key === "+" || e.key === "=") { zoom = Math.min(4, zoom * 1.25); applyZoom(); return; }
+  if (e.key === "-") { zoom = Math.max(.1, zoom / 1.25); applyZoom(); return; }
+  if (e.key === "0") { fitWidth(); return; }
+});
 
 /* ---------- 工具函数 ---------- */
 function fmtSize(n) {
@@ -1051,6 +1557,9 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+/* 控件初始态。必须在 DOM 就绪后统一调一次，否则 #thr 会停在可拖动
+   但不生效的状态——这正是 P0 要消灭的「控件说谎」 */
+syncThr();
 boot();
 </script>
 </body>

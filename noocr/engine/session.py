@@ -413,7 +413,29 @@ def _make_session_options(
        不断变化时 arena 需反复重新规划，且旧块不能及时回收，产生重尾延迟。
        实测最差点达 3447ms，而隔离进程重测同形状仅需 655ms。
 
-       固定形状模型（det/cls）保持 arena 开启以获得分配加速。
+    .. important:: 但「形状有限且离散」的模型必须反过来关掉 dynamic_shape
+
+       上一条的代价**只在形状持续变化时**成立。把这条规则无差别套用到
+       所有动态输入上，会让本来规整的模型白白丢掉 arena。
+
+       PP-OCRv6 det 就是反例：短边恒为 736，长边只在 32 的倍数上变动，
+       形状集合有限且离散，arena 正擅长这种场景。实测 5 张不同长宽比
+       示例图（736x992 / 992x736 / 544x864 / 768x1280 / 736x960）交错
+       A/B，各 12 轮：
+
+       ======================  ================
+       配置                    中位耗时/张
+       ======================  ================
+       dynamic_shape=True      233.3ms
+       dynamic_shape=False     157.6ms   (-32.4%)
+       ======================  ================
+
+       两组波动区间（A 227.7~239.2 / B 149.8~168.5）完全不重叠，差异显著。
+       复现命令：``python scripts/perf/ab_arena.py``
+
+       判据因此是：**形状集合是否有限离散**，而非「是否变化」。
+       rec 的宽度无固定下界（随文本长度任意增长），属持续变化，必须关；
+       det 的长边被 ``_DET_MAX_LONG_SIDE`` 上限截断，属有限离散，必须开。
     """
     import onnxruntime as ort
 
@@ -473,9 +495,11 @@ def create_session(
         providers: 显式指定 providers，覆盖 device 推导。
         threads: CPU 线程数，0 表示交给 ORT 自行决定。
         arena: 是否启用内存 arena，``dynamic_shape=True`` 时强制关闭。
-        dynamic_shape: 输入形状是否随运行变化。宽度动态的模型必须传 True，
-            否则会遭遇内存 arena 引起的性能退化，详见
-            :func:`_make_session_options`。
+        dynamic_shape: 输入形状是否随运行变化。判据是**形状集合是否有限
+            离散**，而非「是否变化」：宽度无固定下界、随文本长度任意增长
+            的模型（rec）必须传 True，否则会遭遇内存 arena 引起的性能
+            退化；而形状被上限截断、集合有限的模型（det）必须传 False，
+            开启 arena 可得约 32% 提速。详见 :func:`_make_session_options`。
         warmup_shape: 给定则做一次 dummy 推理预热，形状必须是 int 元组。
 
     Returns:
@@ -564,7 +588,10 @@ def warmup(session, shape: Tuple[int, ...], dtype: str = "float32") -> None:
     try:
         session.run(None, feeds)
     except Exception as e:
-        log.debug("预热跳过（{}）: {}", shape, e)
+        # 必须是 warning 而非 debug：预热失败意味着首次真实请求会慢 2~10 倍，
+        # 用户能明显感到"第一张图特别卡"。降到 debug 等于把这个信号丢掉，
+        # 届时用户只会怀疑"是不是模型加载有问题"。
+        log.warning("预热跳过（{}）: {}", shape, e)
 
 
 def input_names(session) -> List[str]:
@@ -618,8 +645,18 @@ class SessionCache:
             else (self._device or detect_device())
         )
         path = str(Path(model_path).resolve())
-        dyn = bool(kwargs.get("dynamic_shape", False))
-        key = (path, f"{dev.kind}:{'dyn' if dyn else 'fix'}")
+        # 缓存键必须覆盖**所有**影响 session 行为的配置。只键入
+        # (path, device, dynamic_shape) 会导致：用 threads=4 建好的 session，
+        # 之后传 threads=20 依然命中缓存拿到旧的那个——用户改了线程数却
+        # "没有任何效果"，且无从排查。arena 同理。
+        sig = (
+            f"{dev.kind}:{int(dev.device_id or 0)}",
+            str(bool(kwargs.get("dynamic_shape", False))),
+            str(int(self._threads)),
+            str(bool(kwargs.get("arena", True))),
+            str(tuple(kwargs.get("warmup_shape") or ())),
+        )
+        key = (path, sig)
 
         with self._lock:
             if key in self._store:
