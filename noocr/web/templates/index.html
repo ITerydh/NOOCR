@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NOOCR · 文字识别</title>
+<!-- 内联 SVG 图标：不额外发一次请求，也免掉 favicon.ico 的 404。
+     底板用 currentColor 之外写死值，保证在浅色主题下也有对比度。 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f6ae0'/%3E%3Cpath d='M7 10h4M12 10h4M17 10h4M22 10h3M7 16h3M11 16h4M16 16h4M21 16h4M7 22h4M12 22h4M17 22h5' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 /* ============================================================
    设计 token
@@ -242,23 +245,83 @@ header .spacer { margin-left: auto; }
   letter-spacing: .4px;
 }
 
-/* ---------- 布局 ---------- */
-.wrap { max-width: 1560px; margin: 0 auto; padding: 20px 24px 40px; }
-.grid { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; }
-
-/* 1440 以下左栏收窄：330px 在 1280 屏上占比过高，右侧图文对照被挤窄 */
-@media (max-width: 1440px) { .grid { grid-template-columns: 300px minmax(0, 1fr); } }
-@media (max-width: 1080px) { .grid { grid-template-columns: 1fr; } }
-/* 窄屏下左栏的卡片改双列，否则要滚很久才到结果区 */
-@media (max-width: 1080px) and (min-width: 720px) {
-  .grid > div:first-child {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
-  }
-  .grid > div:first-child .card + .card { margin-top: 0; }
+/* ---------- 布局 ----------
+   上半屏：左「上传 + 配置」／ 右「图文对照」
+   下半屏：左「识别记录」／ 右「示例图」
+   上下两屏各自独立滚动，页面本身不滚——这样切换内容时，
+   上半屏的操作区与对照区始终同屏可见。 */
+.wrap {
+  max-width: 1680px; margin: 0 auto; padding: 16px 24px 24px;
+  display: grid; gap: 16px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  /* 行高只由视口决定，不掺 min-content。掺过的实测教训：CSS Grid 中
+     minmax() 的下限优先级高于上限，视口不够时下限先赢——于是「保底
+     639px 不压」的上行在 800px 高的屏上反而把下行挤成0，整页多出一段
+     滚动，而真正该保证不消失的「开始识别」按钮又被裁掉。
+     纯视口比例则可预期：上行 62%、下行吃掉剩余；左栏内容放不下时
+     由 .side 自己的滚动条处理。 */
+  grid-template-rows: minmax(0, 62fr) minmax(0, 38fr);
+  grid-template-areas:
+    "side main"
+    "hist samples";
+  height: calc(100vh - 56px);
 }
+.side  { grid-area: side; overflow: hidden; display: flex; flex-direction: column; }
+/* 只有参数区可滚。上传区与操作按钮都固定：前者是左栏的第一入口，
+   滚走后用户会以为按钮丢了。
+   实测 800px 高的屏上参数区需要 579px 而只有 ~230px 可用，
+   滚动是必然的——所以必须把「不该滚的」明确排除在外。 */
+.side-params { flex: 1; min-height: 0; overflow-y: auto; position: relative; }
+/* 内容被裁切时给「下面还有」的暗示。用 scrollable 类由 JS 挂载——
+   直接写mask-image 会在内容恰好放得下时也把底部淡掉，
+   看起来像渲染缺失。mask 而非 box-shadow：后者跟着内容一起滚走。 */
+.side-params.scrollable:not(.at-end) {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent 100%);
+}
+.side-actions { flex: none; padding-top: 12px; }
+.side-actions .btn-line { margin-top: 8px; }
+.main  { grid-area: main;   overflow: hidden; }
+.hist  { grid-area: hist;   overflow: hidden; }
+.samples-wrap { grid-area: samples; overflow: hidden; }
+
+/* 1440 以下左栏收窄：340px 在 1280 屏上占比过高，右侧对照区被挤窄 */
+@media (max-width: 1440px) { .wrap { grid-template-columns: 300px minmax(0, 1fr); } }
+
+/* 中屏：两栏改上下堆叠。此时右栏不再需要固定高度，
+   交回给页面自然滚动，否则会出现「页内滚动 + 外层滚动」两层滚动条。 */
+@media (max-width: 1080px) {
+  .wrap {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas: "side" "main" "hist" "samples";
+    height: auto;
+  }
+  .side, .main, .hist, .samples-wrap { overflow: visible; }
+  /* 交回页面自然滚动时，height:100% 必须一并解除——父容器此时由内容
+     决定高度，100% 会形成「高度依赖高度」的循环，被解析成 auto，
+     与 .split 的固定 560px 打架。 */
+  .card.fill { height: auto; }
+  /* 交回页面自然滚动时，内部滚动容器必须一并解除，
+     否则参数区被限高而按钮底栏紧贴，出现「按钮压住参数」的错位。 */
+  .side { display: block; }
+  .side-params { overflow: visible; display: block; }
+  .side-params > .card + .card { margin-top: 12px; }
+  .side-actions { padding-top: 12px; }
+  /* 图与明细在窄屏改上下排。必须给足高度：此时 .split 的父容器
+   由视口比例决定，实测 1440x900 下只有 289px，两行各得 144px，
+   图片被压到 159px 宽——比不排版还糟。这里改为固定高度，
+   宁可让右栏整体高一点，也要保证图能看清。 */
+  .split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    height: 560px;
+  }
+  .split .detail { border-left: none; border-top: 1px solid var(--border); }
+}
+
 @media (max-width: 720px) {
-  .wrap { padding: 14px 12px 28px; }
-  .grid { gap: 14px; }
+  .wrap { padding: 12px 12px 20px; gap: 12px; }
   header { padding: 0 12px; gap: 8px; }
   .samples { grid-template-columns: repeat(3, 1fr); }
 }
@@ -267,13 +330,20 @@ header .spacer { margin-left: auto; }
   .btn-line { flex-wrap: wrap; }
 }
 
+/* 卡片在「不滚动的固定高」容器里需要自行管理内部高度 */
+.card { display: flex; flex-direction: column; min-height: 0; }
+/* 撑满所在 grid 区域。用类而非内联 style：内联样式 specificity 更高，
+   响应式断点里没法覆盖，窄屏就会把固定高带进堆叠布局。 */
+.card.fill { height: 100%; }
+.card.scroll { flex: 1; min-height: 0; }
+
 .card {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;
 }
 .card + .card { margin-top: 16px; }
 .card-h {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px; flex: none;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
   font-size: 11.5px; font-weight: 600; letter-spacing: .7px;
   text-transform: uppercase; color: var(--text-mute);
@@ -281,23 +351,73 @@ header .spacer { margin-left: auto; }
 .card-h .n { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .card-b { padding: 16px; }
 
-/* ---------- 拖放区 ---------- */
+/* ---------- 左栏密度 ----------
+   左栏要在 800px 高的屏上完整放下「上传 + 全部参数 + 开始识别」，
+   实测需 639px，而视口 62% 只给到 427px——按钮会被裁到折叠区外。
+   与其让用户去滚左栏，不如把密度收下来：拖放区与表单间距各收一段，
+   再省掉一次标题栏的 16px 外边距，合计约 150px。 */
+.side .card + .card { margin-top: 12px; }
+.side .card-b { padding: 12px 14px; }
+.side .drop { padding: 16px 14px; }
+.side .drop .ico { font-size: 20px; }
+.side .f { margin-bottom: 10px; }
+.side .row > .f { margin-bottom: 10px; }
+.side .f > label { margin-bottom: 4px; }
+.side .btn-line { margin-top: 8px; }
+/* 记录区与示例区的可滚动正文 */
+.card-body { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- 拖放区 + 缩略图预览 ----------
+   上传后就地变成缩略图预览，不另开一处展示：用户关心的是
+   「我传的是哪张图」，在原地替换比让他去别处找更省心智。
+   PDF/Office 没有可预览的首屏，退回文件卡片形态。 */
 .drop {
-  border: 1.5px dashed var(--border); border-radius: var(--radius);
-  padding: 26px 16px; text-align: center; cursor: pointer;
-  transition: .16s; background: var(--panel-2);
+  position: relative; border: 1.5px dashed var(--border);
+  border-radius: var(--radius); padding: 24px 16px; text-align: center;
+  cursor: pointer; transition: border-color .16s, background .16s;
+  background: var(--panel-2);
 }
-.drop:hover, .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel-2)); }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-subtle); }
+
+/* 空闲态：图标 + 文案 */
+.drop .idle { display: block; }
 .drop .ico { font-size: 24px; opacity: .7; }
 .drop .t { font-size: 13.5px; font-weight: 500; margin-top: 4px; }
 .drop .h { font-size: 11.5px; color: var(--text-mute); margin-top: 2px; }
-.file-chip {
-  display: flex; align-items: center; gap: 8px; margin-top: 12px;
-  padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
-  background: var(--panel-2); border: 1px solid var(--border);
+
+/* 已选态：图片铺满卡片，下方压一条渐变显示文件名 */
+.drop.filled { padding: 0; border-style: solid; border-color: var(--accent-border); }
+.drop.filled .idle { display: none; }
+.thumb { position: relative; display: block; width: 100%; border-radius: 9px; overflow: hidden; }
+.thumb img {
+  display: block; width: 100%; height: 132px; object-fit: contain;
+  background: var(--inset);
 }
-.file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-chip .sz { margin-left: auto; color: var(--text-mute); font-size: 11px; flex: none; }
+.thumb .cap {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px;
+  font-size: 11.5px; color: var(--text-dim); background: var(--panel-2);
+  border-top: 1px solid var(--border);
+}
+.thumb .cap .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb .cap .sz { margin-left: auto; flex: none; color: var(--text-mute); font-family: var(--mono); }
+
+/* 非图片文件：显示类型徽标而非空白缩略图 */
+.thumb .ph {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 132px; background: var(--inset); color: var(--text-mute); font-size: 12.5px;
+}
+.thumb .ph .ext {
+  font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: var(--r-full);
+  background: var(--panel-3); color: var(--text-dim); border: 1px solid var(--border);
+}
+/* 悬浮在缩略图上的「更换」提示，让用户知道还能点 */
+.thumb::after {
+  content: "点击更换"; position: absolute; inset: auto 0 34px 0; padding: 6px;
+  font-size: 11.5px; text-align: center; color: #fff;
+  background: rgba(0, 0, 0, .68);
+  opacity: 0; transition: opacity var(--dur-1) var(--ease-out);
+}
+.drop.filled:hover .thumb::after { opacity: 1; }
 
 /* 全页拖放反馈。拖文件进窗口时给出明确落点，
    否则用户不知道左栏那个小框是不是唯一能放的地方 */
@@ -349,26 +469,31 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 
 /* ---------- 示例图 ---------- */
-/* object-fit 用 contain而非 cover：票据类图片四边留白，
+/* 位于右下角，宽度约为主区的 1/4，网格须比原来更密。
+   object-fit 用 contain：票据类图片四边留白，
    cover 会把文字裁掉，用户点进去发现「识别不全」其实是缩略图的问题 */
-.samples { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.samples { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+@media (max-width: 1440px) { .samples { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 1080px) { .samples { grid-template-columns: repeat(8, 1fr); } }
+@media (max-width: 720px) { .samples { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 460px) { .samples { grid-template-columns: repeat(3, 1fr); } }
 .samples figure {
-  position: relative; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden;
+  position: relative; aspect-ratio: 4 / 3; border-radius: var(--r-sm); overflow: hidden;
   cursor: pointer; border: 1.5px solid transparent; transition: .14s; background: var(--panel-2);
 }
 .samples img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .samples figure:hover { border-color: var(--accent); transform: translateY(-1px); }
 .samples figure.on { border-color: var(--accent); }
 .samples figcaption {
-  position: absolute; inset: auto 0 0 0; padding: 12px 4px 3px;
-  font-size: 9.5px; text-align: center; color: #fff; line-height: 1.3;
-  background: linear-gradient(transparent, rgba(0, 0, 0, .82));
+  position: absolute; inset: auto 0 0 0; padding: 10px 3px 2px;
+  font-size: 9px; text-align: center; color: #fff; line-height: 1.25;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .85));
 }
 
-/* ---------- 页签 ---------- */
+/* ---------- 页签（识别记录区）---------- */
 .tabs {
   display: flex; gap: 2px; padding: 0 12px;
-  border-bottom: 1px solid var(--border); background: var(--panel);
+  border-bottom: 1px solid var(--border); background: var(--panel); flex: none;
 }
 .tabs button {
   width: auto; flex: none; padding: 11px 14px; font-size: 13px; font-weight: 500;
@@ -382,15 +507,46 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   padding: 1px 5px; border-radius: 10px;
   background: var(--panel-2); color: var(--text-mute);
 }
-.tabs button.on .badge { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.tabs button.on .badge { background: var(--accent-subtle); color: var(--accent); }
 .pane { display: none; position: relative; }
 .pane.on { display: block; }
+/* 记录区内的面板需自己撑满并滚动 */
+.tabs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tabs-body .pane.on { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* 历史记录列表 */
+.hist-list { padding: 8px; }
+.hist-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid transparent; background: transparent; text-align: left;
+  color: var(--text); font-family: inherit;
+}
+.hist-item:hover { background: var(--panel-2); }
+.hist-item.on { background: var(--accent-subtle); border-color: var(--accent-border); }
+.hist-item .nm {
+  flex: 1; min-width: 0; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hist-item .meta {
+  font-family: var(--mono); font-size: 11px; color: var(--text-mute); flex: none;
+}
+.hist-item .del {
+  width: 22px; height: 22px; padding: 0; flex: none; border: none;
+  background: transparent; color: var(--text-mute); opacity: 0; font-size: 12px;
+}
+.hist-item:hover .del { opacity: .7; }
+.hist-item .del:hover { background: var(--err-subtle); color: var(--err); }
+.hist-empty { padding: 28px 16px; text-align: center; color: var(--text-mute); font-size: 12.5px; }
 
 /* ---------- 文本区 ---------- */
+/* 位于「不滚动的固定高」容器内，必须自己滚动而不是撑高页面。
+   min-height 用 0 而非固定值：短结果时贴合内容，长结果时由父级滚动。 */
 .out {
-  width: 100%; min-height: 460px; padding: 18px 20px; font-size: 13.5px;
+  flex: 1; min-height: 0; overflow: auto; margin: 0;
+  padding: 16px 18px; font-size: 13.5px;
   font-family: var(--mono); line-height: 1.8; color: var(--text);
-  background: transparent; border: none; outline: none; resize: vertical;
+  background: transparent; border: none; outline: none;
   white-space: pre-wrap; word-break: break-word;
   user-select: text; -webkit-user-select: text; cursor: text;
 }
@@ -413,12 +569,15 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .out-bar button.ok { color: var(--ok); border-color: var(--ok-border); }
 
 /* ---------- 图文对照 ---------- */
+/* 右栏是「图 + 明细」的左右结构。用户要的是逐行核对：看着图上的框、
+   对着右侧的文字与置信度。上下排会让视线反复上下跳，而且图片区
+   一被压到只剩顶部一条就完全无法定位。 */
 .viewer-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel-2);
+  padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2);
 }
-.viewer-bar .stat { font-size: 11.5px; color: var(--text-mute); font-family: var(--mono); }
 .viewer-bar .spacer { margin-left: auto; }
+.viewer-bar .check { color: var(--text-dim); white-space: nowrap; }
 .zoom { display: flex; gap: 3px; }
 .zoom button {
   width: 28px; height: 28px; padding: 0; border-radius: 6px; font-size: 14px;
@@ -427,7 +586,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .zoom button:hover:not(:disabled) { background: var(--panel-2); color: var(--accent); }
 #zRst { width: auto; padding: 0 9px; font-size: 11.5px; }
 
-/* 步进器：页数多时用它，页数少时用 pagepick按钮列。
+/* 步进器：页数多时用它，页数少时用 pagepick 按钮列。
    64 页全列出来会把工具栏撑到换行，反而更难定位当前页。 */
 .stepper {
   display: flex; align-items: center; gap: 2px; padding: 2px;
@@ -442,54 +601,58 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .stepper button:hover:not(:disabled) { background: var(--panel-2); color: var(--accent); }
 .pglabel { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); padding: 0 4px; }
 .toggles { display: flex; gap: 16px; flex-wrap: wrap; }
-.pagepick { display: flex; gap: 3px; flex-wrap: wrap; max-width: 320px; }
-.pagepick button {
-  width: auto; padding: 3px 8px; font-size: 11.5px; font-weight: 500;
-  border-radius: 6px; background: var(--panel); color: var(--text-dim);
-  border: 1px solid var(--border); font-family: var(--mono);
+
+/* 图 + 明细并排，各占一半高度、各自独立滚动。
+   minmax(0, 1fr) 的 0 不能省：默认 min-height:auto 会让内容顶开容器，
+   图片区随即把整页撑出滚动条。 */
+.split {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 40%);
 }
-.pagepick button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
-.pagepick button.on {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent); border-color: var(--accent);
-}
+
+/* 图片舞台：固定用contain 语义——整幅图完整可见，不裁切。
+   图片等比缩放到「刚好放进舞台」，由 fitStage() 算出 zoom。 */
 .stage {
-  position: relative; overflow: auto; max-height: 660px;
+  position: relative; overflow: auto; min-height: 0;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 50% / 18px 18px;
 }
-.viewer { position: relative; display: block; transform-origin: 0 0; }
+.viewer { position: relative; display: block; transform-origin: 0 0; margin: 12px auto; }
 .viewer img { display: block; max-width: none; }
 .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
-/* 图文并排 */
-.split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
-.split .stage { max-height: 660px; border-right: 1px solid var(--border); }
-@media (max-width: 900px) { .split .stage { border-right: none; border-bottom: 1px solid var(--border); } }
-.split .side { display: flex; flex-direction: column; min-width: 0; }
-.split .side .scroll { flex: 1; overflow: auto; max-height: 660px; }
-.split .side .scroll table { font-size: 12.5px; }
-.split .side thead th { padding: 8px 12px; }
-.split .side tbody td { padding: 6px 12px; }
-.split .side td.tx { line-height: 1.5; }
-.split .side .bar .track { min-width: 26px; }
+/* 明细：固定列宽 + 独立滚动。图区与明细区互不抢空间，
+   点某行高亮时图上对应框的变化即刻可见。 */
+.detail { min-height: 0; overflow: auto; border-left: 1px solid var(--border); }
+.detail thead th { padding: 7px 12px; }
+.detail tbody td { padding: 6px 12px; }
+
 .hover-tip {
   position: fixed; z-index: 50; max-width: 300px; padding: 7px 10px;
   font-size: 12px; font-family: var(--mono); line-height: 1.5;
-  background: var(--panel); color: var(--text);
-  border: 1px solid var(--accent); border-radius: 7px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.3); pointer-events: none;
+  background: var(--panel-3); color: var(--text);
+  border: 1px solid var(--accent-border); border-radius: var(--r-sm);
+  box-shadow: var(--sh-2); pointer-events: none;
   display: none; white-space: pre-wrap;
 }
 
 /* ---------- 统计条 ---------- */
+/* 统计条：8 个字段挤在一条横排里。原先 padding 11px + 16px 的
+   块状布局要占约 100px 纵向空间，在 600px 高的右栏里等于把图片
+   压掉六分之一。改为「键值同行」的紧凑排布，省下的高度全给图片。
+   gap 必须给足：实测 6px 时窄屏下相邻两组的标签与数值会粘连成
+   「12.36识别」这种读不出边界的串。 */
 .stats { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--border); }
 .stats div {
-  flex: 1; min-width: 96px; padding: 11px 16px; border-right: 1px solid var(--border);
+  display: flex; align-items: baseline; gap: 8px;
+  flex: 0 1 auto; min-width: 118px; padding: 7px 16px 7px 14px;
+  border-right: 1px solid var(--border);
 }
 .stats div:last-child { border-right: none; }
-.stats .k { font-size: 10.5px; color: var(--text-mute); text-transform: uppercase; letter-spacing: .5px; }
-.stats .v { font-size: 16px; font-weight: 650; font-family: var(--mono); margin-top: 1px; }
+.stats .k {
+  font-size: 10.5px; color: var(--text-mute); flex: none;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.stats .v { font-size: 14px; font-weight: 650; font-family: var(--mono); white-space: nowrap; }
 .stats .v.hl { color: var(--accent); }
 
 /* ---------- 表格 ---------- */
@@ -592,38 +755,39 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
 </header>
 
 <div class="wrap">
-  <main class="grid">
-    <!-- ══════════ 左栏 ══════════ -->
-    <div>
-      <section class="card" aria-labelledby="hInput">
-        <div class="card-h" id="hInput">输入</div>
-        <div class="card-b">
-          <div class="drop" id="drop">
+  <!-- ══════════ 左：上传 + 配置 ══════════ -->
+  <div class="side">
+    <section class="card" aria-labelledby="hInput">
+      <div class="card-h" id="hInput">上传文件</div>
+      <div class="card-b">
+        <div class="drop" id="drop">
+          <div class="idle">
             <div class="ico">⬆</div>
             <div class="t">点击或拖入文件</div>
             <div class="h">图片 · PDF · Word · Excel · PPT</div>
           </div>
-          <input type="file" id="file" accept="image/*,.pdf,.docx,.xlsx,.pptx" hidden>
-          <div class="file-chip hide" id="chip">
-            <span>📄</span><span class="nm" id="chipNm"></span><span class="sz" id="chipSz"></span>
-          </div>
         </div>
+        <input type="file" id="file" accept="image/*,.pdf,.docx,.xlsx,.pptx" hidden>
       </div>
+    </section>
 
+    <div class="side-params">
       <section class="card" aria-labelledby="hParam">
-        <div class="card-h" id="hParam">参数</div>
+        <div class="card-h" id="hParam">识别参数</div>
         <div class="card-b">
           <div class="f">
             <label for="backend">识别后端</label>
             <select id="backend"></select>
           </div>
-          <div class="f">
-            <label for="dpi">DPI（PDF 渲染精度）</label>
-            <input type="number" id="dpi" value="200" min="72" max="600" step="10">
-          </div>
-          <div class="f">
-            <label for="maxPages">最多页数（0 = 不限）</label>
-            <input type="number" id="maxPages" value="0" min="0" step="1">
+          <div class="row">
+            <div class="f">
+              <label for="dpi">DPI（PDF）</label>
+              <input type="number" id="dpi" value="200" min="72" max="600" step="10">
+            </div>
+            <div class="f">
+              <label for="maxPages">最多页数</label>
+              <input type="number" id="maxPages" value="0" min="0" step="1">
+            </div>
           </div>
           <div class="f">
             <label for="batch">识别批大小（CPU 建议 6，GPU 可调大）</label>
@@ -633,98 +797,112 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
             <label class="check"><input type="checkbox" id="showBox" checked>显示文本框</label>
             <label class="check"><input type="checkbox" id="onlyLow">只看低置信</label>
           </div>
-          <button id="run"><span>开始识别</span></button>
-          <div class="btn-line">
-            <button id="copyBtn">复制识别文本</button>
-            <button id="dlBtn">导出 JSON</button>
-            <button id="mdBtn">导出 MD</button>
-          </div>
-        </div>
-      </div>
-
-      <section class="card" aria-labelledby="hSample">
-        <div class="card-h" id="hSample">示例<span class="n" id="sampleN"></span></div>
-        <div class="card-b">
-          <div class="samples" id="samples"></div>
         </div>
       </section>
     </div>
 
-    <!-- ══════════ 右栏 ══════════ -->
-    <div>
-      <section class="card" aria-labelledby="hResult">
-        <h2 id="hResult" class="visually-hidden">识别结果</h2>
-        <div class="tabs" id="tabs" role="tablist" aria-label="结果视图">
-          <button role="tab" data-t="text" class="on" aria-selected="true"
-                  aria-controls="p-text">文本<span class="badge" id="bText">0</span></button>
-          <button role="tab" data-t="md" aria-selected="false"
-                  aria-controls="p-md">Markdown</button>
-          <button role="tab" data-t="view" aria-selected="false"
-                  aria-controls="p-view">图文对照<span class="badge" id="bBox">0</span></button>
-        </div>
+    <!-- 主操作常驻左栏底部：参数区内容高（实测 579px）在 800px 高的屏上
+         装不下 62% 的行高，若按钮跟着参数一起流下来就会被裁掉，
+         用户上传完找不到「开始识别」。独立成栏后按钮永远可见，
+         滚动的只是上方参数。 -->
+    <div class="side-actions">
+      <button id="run"><span>开始识别</span></button>
+      <div class="btn-line">
+        <button id="copyBtn">复制文本</button>
+        <button id="dlBtn">导出 JSON</button>
+        <button id="mdBtn">导出 MD</button>
+      </div>
+    </div>
+  </div>
 
-        <div class="pane on" id="p-text" role="tabpanel" aria-labelledby="hResult">
+  <!-- ══════════ 右上：图文对照 ══════════ -->
+  <div class="main">
+    <section class="card fill" aria-labelledby="hView">
+      <div class="viewer-bar">
+        <div class="stepper hide" id="pageStepper">
+          <button id="pgPrev" title="上一页" aria-label="上一页">‹</button>
+          <span class="pglabel"><span id="pgCur">1</span>/<span id="pgTot">1</span></span>
+          <button id="pgNext" title="下一页" aria-label="下一页">›</button>
+        </div>
+        <div class="spacer"></div>
+        <label class="check"><input type="checkbox" id="thresh">只看 ≥ <span id="thv">80</span>%</label>
+        <input type="range" id="thr" min="0" max="100" value="80" disabled
+               aria-label="置信度阈值" style="width:88px">
+        <div class="zoom">
+          <button id="zOut" title="缩小" aria-label="缩小">−</button>
+          <button id="zRst" title="完整显示整幅图" aria-label="完整显示整幅图">适应</button>
+          <button id="zIn" title="放大" aria-label="放大">+</button>
+        </div>
+      </div>
+      <div class="stats" id="stats" aria-live="polite"></div>
+      <!-- 图与明细左右并排：用户要「看着图、对着字」逐行核对，
+           上下排意味着视线要来回跳，且看不全图就找不到对应位置。 -->
+      <div class="split">
+        <div class="stage" id="stage">
+          <div class="empty" id="vEmpty">
+            <div class="ico">🖼</div>
+            <div class="t">上传文件后在此查看图文对照</div>
+            <div class="h">点击右下角示例图可直接体验</div>
+          </div>
+          <div class="viewer hide" id="viewer">
+            <img id="vImg" alt=""><canvas id="vCv"></canvas>
+          </div>
+        </div>
+        <div class="detail" id="sideScroll">
+          <table>
+            <caption class="visually-hidden">本页识别明细，含文本、置信度与纠正角度</caption>
+            <thead><tr>
+              <th scope="col" style="width:40px">#</th><th scope="col">识别文本</th>
+              <th scope="col" style="width:74px">置信度</th>
+              <th scope="col" style="width:44px">角度</th>
+            </tr></thead>
+            <tbody id="tBody2"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════ 左下：识别记录 ══════════ -->
+  <div class="hist">
+    <section class="card fill" aria-labelledby="hHist">
+      <div class="tabs" id="tabs" role="tablist" aria-label="识别结果">
+        <button role="tab" data-t="hist" class="on" aria-selected="true"
+                aria-controls="p-hist">识别记录<span class="badge" id="bHist">0</span></button>
+        <button role="tab" data-t="text" aria-selected="false"
+                aria-controls="p-text">文本<span class="badge" id="bText">0</span></button>
+        <button role="tab" data-t="md" aria-selected="false"
+                aria-controls="p-md">Markdown</button>
+      </div>
+      <div class="tabs-body">
+        <div class="pane on" id="p-hist" role="tabpanel">
+          <div class="hist-list" id="histList"></div>
+        </div>
+        <div class="pane" id="p-text" role="tabpanel">
           <div class="out-bar">
             <button id="copyText">复制全文</button>
           </div>
           <div class="out" id="oText" data-ph="识别结果会显示在这里。"></div>
         </div>
-
-        <div class="pane" id="p-md" role="tabpanel" aria-labelledby="hResult">
+        <div class="pane" id="p-md" role="tabpanel">
           <div class="out-bar">
             <button id="copyMd">复制全文</button>
           </div>
           <div class="out" id="oMd" data-ph="Markdown 预览"></div>
         </div>
+      </div>
+    </section>
+  </div>
 
-        <div class="pane" id="p-view" role="tabpanel" aria-labelledby="hResult">
-          <div class="viewer-bar">
-            <div class="stepper hide" id="pageStepper">
-              <button id="pgPrev" title="上一页" aria-label="上一页">‹</button>
-              <span class="pglabel"><span id="pgCur">1</span>/<span id="pgTot">1</span></span>
-              <button id="pgNext" title="下一页" aria-label="下一页">›</button>
-            </div>
-            <div class="pagepick hide" id="pagePick"></div>
-            <div class="spacer"></div>
-            <label class="check"><input type="checkbox" id="thresh">只看 ≥ <span id="thv">80</span>%</label>
-            <input type="range" id="thr" min="0" max="100" value="80" disabled
-                   aria-label="置信度阈值" style="width:88px">
-            <div class="zoom">
-              <button id="zOut" title="缩小" aria-label="缩小">−</button>
-              <button id="zRst" title="适应宽度">适应</button>
-              <button id="zIn" title="放大" aria-label="放大">+</button>
-            </div>
-          </div>
-          <div class="stats" id="stats" aria-live="polite"></div>
-          <div class="split">
-            <div class="stage" id="stage">
-              <div class="empty" id="vEmpty">
-                <div class="ico">🖼</div>
-                <div class="t">上传文件后在此查看图文对照</div>
-                <div class="h">点击左侧示例图可直接体验</div>
-              </div>
-              <div class="viewer hide" id="viewer">
-                <img id="vImg" alt=""><canvas id="vCv"></canvas>
-              </div>
-            </div>
-            <div class="side">
-              <div class="scroll" id="sideScroll">
-                <table>
-                  <caption class="visually-hidden">本页识别明细，含文本、置信度与纠正角度</caption>
-                  <thead><tr>
-                    <th scope="col" style="width:40px">#</th><th scope="col">文本</th>
-                    <th scope="col" style="width:108px">置信度</th>
-                    <th scope="col" style="width:48px">角度</th>
-                  </tr></thead>
-                  <tbody id="tBody2"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  </main>
+  <!-- ══════════ 右下：示例图 ══════════ -->
+  <div class="samples-wrap">
+    <section class="card fill" aria-labelledby="hSample">
+      <div class="card-h" id="hSample">示例图<span class="n" id="sampleN"></span></div>
+      <div class="card-body">
+        <div class="samples" id="samples"></div>
+      </div>
+    </section>
+  </div>
 </div>
 
 <div class="hover-tip" id="tip"></div>
@@ -752,10 +930,17 @@ const SAMPLES = [
 
 let file = null, result = null, pages = [], page = 0;
 let srcUrl = null, zoom = 1, hoverIdx = -1, selIdx = -1, docId = "";
-let abortCtl = null, runSeq = 0;
+/* 是否处于「自动适配」模式。用户手动缩放后置false，
+   此后窗口变化就不再覆盖他的选择——他明确表达过尺寸偏好。 */
+let autoFit = true;
+let abortCtl = null, runSeq = 0, thumbUrl = null;
 /* 当前识别来源：null = 用户上传的文件；非空 = 正在看的示例图 key。
    不靠 file 是否为 null 来推断来源——示例图模式 file 恒为 null。 */
 let sampleKey = null;
+
+/* 识别记录：本次会话内历次识别的快照。放内存而不落盘——
+   浏览器端没有可靠的文件系统权限，且用户要的是「这次会话里我跑了什么」。 */
+const history = [];
 
 async function boot() {
   try {
@@ -918,17 +1103,37 @@ $("file").onchange = e => { if (e.target.files.length) setFile(e.target.files[0]
 function setFile(f) {
   file = f;
   sampleKey = null;
-  $("chip").classList.remove("hide");
-  $("chipNm").textContent = f.name;
-  $("chipSz").textContent = fmtSize(f.size);
+  showThumb(f);
   document.querySelectorAll(".samples figure").forEach(x => x.classList.remove("on"));
-  if (f.type.startsWith("image/")) {
-    setSrc(URL.createObjectURL(f));
-  } else {
-    $("viewer").classList.add("hide");
-    $("vEmpty").classList.remove("hide");
-  }
   run();
+}
+
+/* 上传区原地缩略图：图片直接铺在拖放框里，PDF/Office 显示类型徽标。
+   不另开位置展示——用户在拖放点放下文件后，视线就在那里。 */
+function showThumb(f) {
+  const box = $("drop");
+  box.classList.add("filled");
+  const isImg = f.type.startsWith("image/");
+  const url = isImg ? URL.createObjectURL(f) : null;
+  if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+  thumbUrl = url;
+  const ext = (f.name.split(".").pop() || "?").toUpperCase();
+  box.innerHTML =
+    `<div class="thumb">` +
+      (isImg
+        ? `<img src="${url}" alt="${esc(f.name)}">`
+        : `<div class="ph"><span class="ext">${esc(ext)}</span><span>可预览首屏将显示在右侧</span></div>`) +
+      `<div class="cap"><span class="nm">${esc(f.name)}</span>` +
+      `<span class="sz">${fmtSize(f.size)}</span></div>` +
+    `</div>`;
+}
+
+function clearThumb() {
+  if (thumbUrl) { URL.revokeObjectURL(thumbUrl); thumbUrl = null; }
+  $("drop").classList.remove("filled");
+  $("drop").innerHTML =
+    `<div class="idle"><div class="ico">⬆</div><div class="t">点击或拖入文件</div>` +
+    `<div class="h">图片 · PDF · Word · Excel · PPT</div></div>`;
 }
 
 async function runSample(key, label, fig) {
@@ -936,7 +1141,7 @@ async function runSample(key, label, fig) {
   if (fig) fig.classList.add("on");
   file = null;
   sampleKey = key;
-  $("chip").classList.add("hide");
+  clearThumb();
   setSrc(`/static/${key}.jpg`, `${label}.jpg`);
   await run();
 }
@@ -948,11 +1153,17 @@ function setSrc(url, name) {
   $("vEmpty").classList.add("hide");
   $("viewer").classList.remove("hide");
   if (name) $("vImg").alt = name;
-  $("vImg").onload = () => { fitWidth(); };
+  $("vImg").onload = () => { autoFit = true; fitStage(); };
   $("vImg").onerror = () => {
     $("viewer").classList.add("hide");
-    $("vEmpty").classList.remove("hide");
+    showEmpty("图片加载失败", "该文档可能已超出服务端缓存上限，请重新识别一次");
   };
+}
+
+/* 统一的空态入口：多处调用，文案必须能互相覆盖复原 */
+function showEmpty(t, h) {
+  $("vEmpty").querySelector(".t").textContent = t;
+  $("vEmpty").querySelector(".h").textContent = h;
 }
 
 /* ---------- 识别 ---------- */
@@ -1032,14 +1243,15 @@ function apply(d) {
      浏览器会拿回旧图，表现为「重新识别了但标注还是上一轮的」。
      用单调递增的序号，每轮必定是新URL。 */
   runSeq += 1;
+  /* 复原空态文案：看过历史记录后文案被改写过，
+     新一轮识别成功后若不还原，会一直挂着「页面图不可用」的旧提示 */
+  showEmpty("上传文件后在此查看图文对照", "点击右下角示例图可直接体验");
 
   const all = pages.flatMap(p => p.lines);
   const native = d.native_text;
   $("oText").textContent = native || all.map(l => l.text).join("\n") || "";
   $("oMd").textContent = d.markdown || "";
   $("bText").textContent = all.length;
-  $("bBox").textContent = all.length;
-  $("bText").parentElement.classList.toggle("on", true);
 
   const avg = all.length ? all.reduce((a, l) => a + l.confidence, 0) / all.length : 0;
   const st = (pages[0] && pages[0].stages) || null;
@@ -1061,39 +1273,19 @@ function apply(d) {
   $("stats").innerHTML = cells
     .map(([k, v, hl]) => `<div><div class="k">${k}</div><div class="v${hl ? " hl" : ""}">${v}</div></div>`)
     .join("");
-  buildPagePick();
+  pushHistory(d, all);
+  syncPageNav();
   gotoPage(0);
 }
 
-/* 页码导航：页数少时列按钮，超过阈值改用步进器。
-   64 页全部铺开会把工具栏挤到换行，且当前页需要滚动才能看到。 */
-const PAGE_PICK_MAX = 12;
-
-function buildPagePick() {
-  const pick = $("pagePick");
+/* 页码导航。多页时用步进器（上一页 / 当前 / 下一页），
+   64 页全列出来会把工具栏撑到换行，反而更难定位当前页。 */
+function syncPageNav() {
   const step = $("pageStepper");
-  pick.innerHTML = "";
-  if (pages.length < 2) {
-    pick.classList.add("hide");
-    step.classList.add("hide");
-    return;
-  }
-  const useStepper = pages.length > PAGE_PICK_MAX;
-  pick.classList.toggle("hide", useStepper);
-  step.classList.toggle("hide", !useStepper);
+  step.classList.toggle("hide", pages.length < 2);
   $("pgTot").textContent = pages.length;
-
-  if (!useStepper) {
-    pages.forEach((_, i) => {
-      const b = document.createElement("button");
-      b.textContent = i + 1;
-      b.onclick = () => gotoPage(i);
-      pick.appendChild(b);
-    });
-  }
 }
 
-/* 切页：图片、明细表、标注三者同步 */
 function gotoPage(i) {
   if (!pages.length) return;
   page = Math.max(0, Math.min(i, pages.length - 1));
@@ -1105,18 +1297,108 @@ function gotoPage(i) {
   }
 
   renderRows();
-  [...$("pagePick").children].forEach((b, k) => b.classList.toggle("on", k === page));
   $("pgCur").textContent = page + 1;
   $("pgPrev").disabled = page === 0;
   $("pgNext").disabled = page >= pages.length - 1;
   $("stage").scrollTop = 0;
   $("stage").scrollLeft = 0;
   $("sideScroll").scrollTop = 0;
-  requestAnimationFrame(() => { fitWidth(); draw(); });
+  requestAnimationFrame(() => { fitStage(); draw(); });
 }
 
 $("pgPrev").onclick = () => gotoPage(page - 1);
 $("pgNext").onclick = () => gotoPage(page + 1);
+
+/* ---------- 识别记录 ---------- */
+/* 上限 20 条：再往前的记录用户几乎不会再回头看，却一直占着内存。
+   超限时丢最旧的——它们的价值随时间衰减得很快。 */
+const HISTORY_MAX = 20;
+
+function pushHistory(d, lines) {
+  const srcName = file ? file.name : (d.source || (sampleKey || "示例图") + ".jpg");
+  history.unshift({
+    name: srcName,
+    backend: d.backend,
+    pages: d.page_count,
+    lines: lines.length,
+    time: d.total_time,
+    at: new Date(),
+    /* 快照：点回历史条目时后端文档可能已过期，图片取不到。
+       存文本与坐标即可完整复原对照，图片则退化为空态提示。 */
+    text: d.native_text || lines.map(l => l.text).join("\n"),
+    markdown: d.markdown || "",
+  });
+  if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
+  renderHistory();
+}
+
+function renderHistory() {
+  const box = $("histList");
+  $("bHist").textContent = history.length;
+  if (!history.length) {
+    box.innerHTML = `<div class="hist-empty">还没有识别记录。<br>上传文件或点击右下角示例图开始。</div>`;
+    return;
+  }
+  box.innerHTML = "";
+  history.forEach((h, i) => {
+    const el = document.createElement("div");
+    el.className = "hist-item" + (i === 0 ? " on" : "");
+    const t = h.at;
+    const hh = String(t.getHours()).padStart(2, "0");
+    const mm = String(t.getMinutes()).padStart(2, "0");
+    const ss = String(t.getSeconds()).padStart(2, "0");
+    el.innerHTML =
+      `<span class="nm" title="${esc(h.name)}">${esc(h.name)}</span>` +
+      `<span class="meta">${h.lines} 行 · ${h.time.toFixed(2)}s · ${hh}:${mm}:${ss}</span>` +
+      `<button class="del" title="移除此记录" aria-label="移除此记录">✕</button>`;
+    el.querySelector(".nm").onclick = () => restoreHistory(i);
+    el.querySelector(".del").onclick = e => {
+      e.stopPropagation();
+      history.splice(i, 1);
+      /* 删掉的若是当前正在查看的那条，且已无记录可看，才整体清空。
+         只删历史中的一两条不该把当前结果也抹掉。 */
+      if (i === 0 && !history.length) {
+        result = null; pages = []; docId = ""; runSeq += 1;
+        $("stats").innerHTML = ""; $("oText").textContent = ""; $("oMd").textContent = "";
+        $("bText").textContent = "0";
+        $("tBody2").innerHTML = "";
+        $("viewer").classList.add("hide");
+        $("vEmpty").classList.remove("hide");
+        showEmpty("上传文件后在此查看图文对照", "点击右下角示例图可直接体验");
+      }
+      renderHistory();
+    };
+    box.appendChild(el);
+  });
+}
+
+/* 复原历史记录：文本与统计能完整还原，但页面图取不回
+   （后端 DocCache 按容量淘汰，旧文档已不在）。这里如实展示
+   文本结果并提示图片不可用，而不是让图区空白让人以为出bug。 */
+function restoreHistory(i) {
+  const h = history[i];
+  if (!h) return;
+  $("oText").textContent = h.text;
+  $("oMd").textContent = h.markdown;
+  $("bText").textContent = h.text ? h.text.split("\n").filter(Boolean).length : 0;
+  const lines = h.text ? h.text.split("\n").filter(Boolean).map(t => ({ text: t })) : [];
+  pages = [{ page_index: 0, width: 0, height: 0, lines, has_image: false }];
+  docId = "";
+  page = 0;
+  $("stats").innerHTML = [
+    ["后端", h.backend], ["记录时间", `${h.at.getHours()}:${String(h.at.getMinutes()).padStart(2, "0")}`],
+    ["页数", h.pages], ["文本行", h.lines], ["耗时", h.time + "s"],
+  ].map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  $("viewer").classList.add("hide");
+  $("vEmpty").classList.remove("hide");
+  showEmpty("这是历史记录的文本结果", "页面图仅在本次会话的当前结果中可用");
+  $("sideScroll").innerHTML = `<table><tbody>${lines.map((l, k) =>
+    `<tr><td class="n">${k + 1}</td><td class="tx" colspan="3">${esc(l.text)}</td></tr>`
+  ).join("")}</tbody></table>`;
+  renderHistory();
+  /* 标记为当前查看的条目 */
+  [...$("histList").children].forEach((el, k) => el.classList.toggle("on", k === i));
+}
 
 /* 明细表。onlyLow 打开时只留低置信行——排查识别质量时
    「哪些行没认准」比「全部行」有用得多。 */
@@ -1148,8 +1430,8 @@ function renderRows() {
   syncRows();
 }
 
-/* ---------- 页签 ---------- */
-const TABS = ["text", "md", "view"];
+/* ---------- 页签（记录区：记录 / 文本 / Markdown）---------- */
+const TABS = ["hist", "text", "md"];
 
 function tab(t) {
   [...$("tabs").children].forEach(x => {
@@ -1159,7 +1441,6 @@ function tab(t) {
     x.setAttribute("aria-selected", String(on));
   });
   TABS.forEach(k => $("p-" + k).classList.toggle("on", k === t));
-  if (t === "view") requestAnimationFrame(fitWidth);
 }
 $("tabs").onclick = e => {
   const b = e.target.closest("button");
@@ -1341,11 +1622,36 @@ function syncThr() {
 $("showBox").onchange = draw;
 $("onlyLow").onchange = renderRows;
 
+/* ---------- 左栏参数区的滚动提示 ----------
+   矮屏上参数区装不下时必须让用户知道「下面还有」，否则会以为
+   批大小和开关根本不存在。scrollable 表示可滚，at-end 表示已到底，
+   两者共同决定是否加底部渐隐。窗口缩放会改变是否溢出，故一并监听。 */
+(function syncSideScroll() {
+  const el = document.querySelector(".side-params");
+  if (!el) return;
+  const update = () => {
+    const over = el.scrollHeight - el.clientHeight;
+    el.classList.toggle("scrollable", over > 2);
+    el.classList.toggle("at-end", over <= 2 || el.scrollTop >= over - 2);
+  };
+  el.addEventListener("scroll", update, { passive: true });
+  addEventListener("resize", update);
+  if (typeof ResizeObserver === "function") new ResizeObserver(update).observe(el);
+  update();
+})();
+
 /* ---------- 缩放 ---------- */
-function fitWidth() {
+/* 自适应：等比缩放到「整幅图刚好落在舞台内」，宽高取较小者。
+   只按宽度算会让竖长图（票据、竖排招牌）底部被裁掉，
+   用户看到的就只是半张图，却以为是识别漏了。 */
+function fitStage() {
   const st = $("stage"), img = $("vImg");
-  if (!img.naturalWidth) return;
-  zoom = Math.min(1, (st.clientWidth - 4) / img.naturalWidth);
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return;
+  /* -24 是给 viewer 的 12px 外边距留位；留 0 会让图正好贴边，
+     视觉上像被切了一刀。 */
+  const k = Math.min((st.clientWidth - 24) / w, (st.clientHeight - 24) / h);
+  zoom = Math.min(3, Math.max(0.05, k));
   applyZoom();
 }
 /* 缩放用 transform: scale 而非改 width/height。
@@ -1356,18 +1662,29 @@ function applyZoom() {
   /* viewer 的布局尺寸保持为原始尺寸，靠 transform 视觉缩放，
      这样.stage 的滚动区域始终与视觉大小一致 */
   v.style.width = img.naturalWidth + "px";
+  v.style.height = img.naturalHeight + "px";
   img.style.width = img.naturalWidth + "px";
   img.style.height = img.naturalHeight + "px";
   v.style.transform = `scale(${zoom})`;
-  /* transform 不改变布局盒子，滚动容器需要显式补偿占位 */
-  v.style.marginRight = (img.naturalWidth * zoom - img.naturalWidth) + "px";
-  v.style.marginBottom = (img.naturalHeight * zoom - img.naturalHeight) + "px";
+  /* transform 不改变布局盒子，滚动容器需要显式补偿占位。
+     负 margin 让放大的图能以舞台中心对齐，而不是一律靠左上角。 */
+  v.style.marginLeft = (img.naturalWidth * zoom - img.naturalWidth) / 2 + "px";
+  v.style.marginTop = (img.naturalHeight * zoom - img.naturalHeight) / 2 + "px";
   draw();
 }
-$("zIn").onclick = () => { zoom = Math.min(4, zoom * 1.25); applyZoom(); };
-$("zOut").onclick = () => { zoom = Math.max(.1, zoom / 1.25); applyZoom(); };
-$("zRst").onclick = fitWidth;
-addEventListener("resize", () => { if (zoom < 1) fitWidth(); });
+/* 舞台尺寸变化（窗口缩放、切页、明细表出现）都要重新适配，
+   否则图会停在上一次的缩放比例上，出现大片留白或被裁切。 */
+if (typeof ResizeObserver === "function") {
+  new ResizeObserver(() => {
+    if ($("viewer").classList.contains("hide")) return;
+    if (autoFit) fitStage();
+  }).observe($("stage"));
+}
+
+$("zIn").onclick = () => { autoFit = false; zoom = Math.min(4, zoom * 1.25); applyZoom(); };
+$("zOut").onclick = () => { autoFit = false; zoom = Math.max(.05, zoom / 1.25); applyZoom(); };
+$("zRst").onclick = () => { autoFit = true; fitStage(); };
+addEventListener("resize", () => { if (autoFit) fitStage(); });
 
 /* ---------- 工具 ---------- */
 
@@ -1535,15 +1852,15 @@ addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); return; }
   if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); run(); return; }
   if (e.key === "o" || e.key === "O") { e.preventDefault(); $("file").click(); return; }
-  if (e.key === "1") { tab("text"); return; }
-  if (e.key === "2") { tab("md"); return; }
-  if (e.key === "3") { tab("view"); return; }
+  if (e.key === "1") { tab("hist"); return; }
+  if (e.key === "2") { tab("text"); return; }
+  if (e.key === "3") { tab("md"); return; }
   if (e.key === "ArrowLeft" && pages.length > 1) { gotoPage(page - 1); return; }
   if (e.key === "ArrowRight" && pages.length > 1) { gotoPage(page + 1); return; }
   /* +/- 缩放。放在最后，避免和上面的数字键冲突判断 */
   if (e.key === "+" || e.key === "=") { zoom = Math.min(4, zoom * 1.25); applyZoom(); return; }
   if (e.key === "-") { zoom = Math.max(.1, zoom / 1.25); applyZoom(); return; }
-  if (e.key === "0") { fitWidth(); return; }
+  if (e.key === "0") { autoFit = true; fitStage(); return; }
 });
 
 /* ---------- 工具函数 ---------- */
@@ -1560,6 +1877,7 @@ function esc(s) {
 /* 控件初始态。必须在 DOM 就绪后统一调一次，否则 #thr 会停在可拖动
    但不生效的状态——这正是 P0 要消灭的「控件说谎」 */
 syncThr();
+renderHistory();
 boot();
 </script>
 </body>
