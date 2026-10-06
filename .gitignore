@@ -91,3 +91,6 @@ _bench_*.json
 scripts/perf/OnnxOCR
 scripts/perf/weights_shared
 scripts/perf/onnxocr-env
+
+# 改版前端时留下的手工备份
+noocr/web/templates/*_bak.html

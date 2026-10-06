@@ -202,19 +202,19 @@ RTX 4070 Ti SUPER + `ppocrv6-small`, the same 8 sample images as the comparison 
 
 | Image | Lines | CPU | GPU | Speedup |
 |---|---|---|---|---|
-| Table | 73 | 1380ms | 446ms | 3.1x |
-| Exam sheet | 65 | 1932ms | 711ms | 2.7x |
-| ID card | 11 | 1573ms | 248ms | 6.3x |
-| Lab report | 69 | 1253ms | 355ms | 3.5x |
-| Spec sheet | 16 | 1517ms | 262ms | 5.8x |
-| Statement | 31 | 1608ms | 349ms | 4.6x |
-| Plaque | 2 | 1265ms | 98ms | 13.0x |
-| Train ticket | 19 | 1696ms | 295ms | 5.8x |
-| **Total** | — | **12223 ms** | **2763 ms** | **4.4x** |
+| Table | 73 | 1312ms | 450ms | 2.9x |
+| Exam sheet | 65 | 1803ms | 716ms | 2.5x |
+| ID card | 11 | 1687ms | 247ms | 6.8x |
+| Lab report | 69 | 1357ms | 352ms | 3.9x |
+| Spec sheet | 16 | 1540ms | 253ms | 6.1x |
+| Statement | 31 | 1638ms | 341ms | 4.8x |
+| Plaque | 2 | 1253ms | 97ms | 12.9x |
+| Train ticket | 19 | 1854ms | 291ms | 6.4x |
+| **Total** | — | **12444 ms** | **2747 ms** | **4.5x** |
 
-The speedup has little to do with line count — layout complexity dominates. `Plaque` has only 2 lines but a large canvas: fixed overhead alone accounts for 1.2 seconds on CPU while GPU needs just 98ms, hence 13x. Dense small text in `Table` manages only 3.1x — its post-processing (perspective transforms, text-line merging) is pure Python work that the GPU cannot help with.
+The speedup has little to do with line count — layout complexity dominates. `Plaque` has only 2 lines but a large canvas: fixed overhead alone accounts for 1.25 seconds on CPU while GPU needs just 97ms, hence 12.9x. Dense small text in `Table` manages only 2.9x — its post-processing (perspective transforms, text-line merging) is pure Python work that the GPU cannot help with.
 
-The first GPU request includes roughly 2.4s of model loading and CUDA kernel compilation; after that it settles at 0.1-0.7s. Reproduce:
+The first GPU request includes roughly 2.4s of model loading and CUDA kernel compilation; after that it settles at 0.1-0.8s. Reproduce:
 
 ```bash
 python scripts/perf/bench_device.py cpu 10   > device_cpu.json

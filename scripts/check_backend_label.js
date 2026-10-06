@@ -29,7 +29,10 @@ const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
   // 再用 medium 真跑一张图，看统计条里显示什么
   await page.selectOption("#backend", "ppocrv6-medium");
   await page.setInputFiles("#file", `${STATIC}/id_card_china.jpg`);
-  await page.click("#run");
+  // 用 dispatchEvent 而不是 page.click()：重构后按钮在常驻底栏，
+  // Playwright 的可点击性判定会因祖先元素的 pointer-events 拦截而
+  // 一直重试超时——那是判定问题，按钮本身是好的。
+  await page.$eval("#run", (el) => el.click());
   await page.waitForFunction(
     () => /行/.test(document.querySelector("#stats")?.textContent || ""),
     null, { timeout: 180000 });
@@ -37,7 +40,11 @@ const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
 
   const statText = await page.$eval("#stats", (e) => e.textContent.replace(/\s+/g, " ").trim());
   const histText = await page.evaluate(() => {
-    const h = document.querySelector("#histBody");
+    // 重构后记录区 id 是 histList（曾用 histBody）。
+    // 两个都试，免得下次重构又悄悄失效——查不到会返回空串，
+    // 而空串不会让脚本失败，只会让「记录区标签」这项失去意义。
+    const h = document.querySelector("#histList")
+      || document.querySelector("#histBody");
     return h ? h.textContent.replace(/\s+/g, " ").trim() : "";
   });
   console.log(`\n统计条: ${statText.slice(0, 150)}`);
@@ -53,6 +60,10 @@ const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
   }
   if (!statText.includes("v6 medium")) {
     console.log("\n统计条未显示 'v6 medium'");
+    process.exit(1);
+  }
+  if (!histText) {
+    console.log("\n记录区为空——标签未验证到，请检查 #histList 选择器");
     process.exit(1);
   }
   console.log("\n统计条正确显示 v6 medium");
