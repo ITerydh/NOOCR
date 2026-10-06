@@ -2,28 +2,28 @@
 
 [简体中文](README.md) | [English](README_EN.md) | [繁體中文](README_TW.md)
 
-基於 ONNX 的全功能 OCR 系統。一個核心，多檔後端，CPU / GPU 雙模。
+ONNX 全功能 OCR 系統。一個核心，多檔後端，CPU / GPU 雙模。
 
 ```bash
-pip install -r requirements.txt      # 一條命令，CPU 與 GPU 通用
-python -m noocr models --get ppocrv6-tiny   # 拉權重（約 6MB）
-python -m noocr 發票.jpg                     # 識別
-python -m noocr serve                        # Web 介面 http://127.0.0.1:8000
+pip install -r requirements.txt              # 一條命令，CPU 與 GPU 通用
+python -m noocr models --get ppocrv6-tiny    # 拉權重（約 6MB）
+python -m noocr 發票.jpg                      # 辨識
+python -m noocr serve                         # Web 介面 http://127.0.0.1:8000
 ```
 
-有 NVIDIA 顯卡時加上 `-d cuda`（或 `serve --device cuda`），端到端快 **20-40 倍**。
+有 NVIDIA 顯示卡時加 `-d cuda`（或 `serve --device cuda`），端到端快 **20-40 倍**。
 
----
+遇到問題先看 [Q&A.md](Q&A.md)。
 
 ## 特性
 
 | | |
 |---|---|
 | **一份依賴** | CPU 與 NVIDIA 機器裝同一個 `requirements.txt`，無需重建環境 |
-| **CPU / GPU 雙模** | 同一份程式碼，`--device cpu` 或 `--device cuda`，可自動探測 |
-| **三檔後端** | PP-OCRv6 tiny（6MB）/ small（32MB，預設）/ v5（22MB） |
+| **CPU / GPU 雙模** | 同一份程式碼，`--device cpu` 或 `--device cuda`，預設自動探測 |
+| **三檔後端** | PP-OCRv6 tiny（6MB）/ small（32MB，預設）/ v5（16MB） |
 | **多格式輸入** | 圖片、PDF、Word、Excel、PPT、URL |
-| **結果可重現** | 識別輸出與 `rec_batch_size` 無關 |
+| **結果可重現** | 辨識輸出與 `rec_batch_size` 無關 |
 | **四種交付** | 函式庫 / CLI / REST API / Web 介面 |
 | **統一契約** | 任何後端都回傳 `OCRResult`，呼叫端無需分支 |
 
@@ -40,32 +40,15 @@ python -m venv .venv && . .venv/Scripts/activate    # Windows
 pip install -r requirements.txt
 ```
 
-### 為什麼只有一份依賴
-
-`requirements.txt` 裝的是 `onnxruntime-gpu` 而非 `onnxruntime`，因為前者是後者的**超集**——它同時含 CPU、CUDA、TensorRT 三個 EP，裝一個套件就覆蓋了兩種機器：
-
-| 套件 | 可用 EP | 體積 |
-|---|---|---|
-| `onnxruntime` | CPU | ~15 MB |
-| `onnxruntime-gpu` | CPU / CUDA / TensorRT | ~700 MB |
-
-沒有 NVIDIA 顯卡的機器裝 GPU 版**照樣能正常安裝與執行**，只是 GPU 部分永不啟用。所以不需要區分「CPU 環境」和「GPU 環境」，也不需要為 GPU 重建虛擬環境。
-
-代價是體積。若只跑 CPU 且在意安裝速度或磁碟空間，換一份輕量的：
+無 NVIDIA 顯示卡的機器裝同一份依賴也能正常安裝執行，只是 GPU 部分永不啟用。若只跑 CPU 且在意安裝體積，可換輕量版（辨識結果完全一致）：
 
 ```bash
-pip install -r requirements-cpu.txt     # 約 15MB 的 ORT，識別結果完全一致
+pip install -r requirements-cpu.txt     # 約 15MB
 ```
 
-哪天要開 GPU，改為執行 `pip install -r requirements.txt` 即可（GPU 版會覆蓋 CPU 版）。
+### GPU 需要額外的系統函式庫
 
-### 系統層依賴（僅 GPU 需要）
-
-pip 只管 Python 套件，CUDA 與 cuDNN 是**系統層執行庫**，須單獨安裝：
-
-1. NVIDIA 驅動程式（≥ 525）
-2. CUDA 12.x
-3. **cuDNN 9**（注意是 9.x，ORT 1.20+ 依賴 `cudnn64_9.dll`）
+CUDA 與 cuDNN 是系統層執行庫，pip 裝不了，須分別安裝：NVIDIA 驅動程式（≥ 525）、CUDA 12.x、**cuDNN 9**。
 
 裝完告訴專案 DLL 在哪（Windows 必填，Linux/macOS 一般不需要）：
 
@@ -74,61 +57,7 @@ set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin            # Windows
 export NOOCR_GPU_LIB_DIR=/usr/local/cudnn/lib       # Linux
 ```
 
-專案也會自動在專案根目錄、虛擬環境的 `site-packages/cudnn/` 等常見位置尋找。
-
-## GPU 加速
-
-GPU 上端到端比 CPU 快 **20-40 倍**（見下方[效能](#效能)）。依賴已在 `requirements.txt` 裡，無需額外安裝 Python 套件；只要系統層裝好 CUDA 12 + cuDNN 9 即可：
-
-```bash
-python -m noocr 發票.jpg -d cuda
-python -m noocr serve --device cuda
-```
-
-`--device` 可選 `auto`（預設，有 CUDA 就用）/ `cpu` / `cuda`。
-
-### 在 Web 介面裡隨時切換
-
-`serve` 啟動後，**頂欄裝置徽標可直接點擊切換**，無需重啟服務：
-
-- 徽標顯示的是**實際生效**的裝置（GPU 生效時顯示顯卡名稱並變綠），不是啟動時的請求值；
-- 下拉裡有 `自動 / 顯示卡 / 處理器` 三項，本機無 GPU 環境時「顯示卡」會置灰並寫明原因；
-- 切換時自動卸載另一套模型並歸還顯示記憶體，代價約 0.4-0.6s；切換後若已有識別結果會自動重跑，方便直接比較速度；
-- 目標裝置不可用時回傳 400 並**保持原裝置不變**，不會把能跑的服務弄成不能跑。
-
-也可以走 API：
-
-```bash
-curl http://127.0.0.1:8000/api/device                       # 目前裝置
-curl -X POST -F "device=cuda" .../api/device              # 切到 GPU
-```
-
-### cuDNN 9 是必要的
-
-ONNX Runtime 1.20+ 的 CUDA EP 依賴 **cuDNN 9**（`cudnn64_9.dll`）。裝錯版本的表現非常隱蔽：ORT **不報錯**，只是把運算子悄悄交給 CPU，你會得到純 CPU 的效能卻以為在用顯示卡。
-
-本專案對此做了三重防護：
-
-1. 啟動時用微型 ONNX 模型**實測** CUDA EP 能否初始化，而非只看它是否被編譯進來；
-2. session 建立後**核對實際生效的 EP**，與請求不符直接報錯；
-3. Web 介面頂欄常駐**裝置徽標**，GPU 未生效時顯示為 CPU。
-
-cuDNN 9 安裝（解壓後把 `bin` 下的 DLL 放到任一目錄並告知專案）：
-
-```bash
-# 從 https://developer.nvidia.com/cudnn-downloads 下載 cuDNN 9 for CUDA 12
-# Windows 需顯式登記 DLL 搜尋路徑，Linux/macOS 直接給權限即可
-set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin
-```
-
-專案會自動在專案根目錄、`noocr-gpu/` 等同級虛擬環境的 `site-packages/cudnn/` 下尋找，無需手動設定。
-
-> **若 GPU 環境與 CPU 環境分開建**（建議，避免 ORT 的 DLL 互相覆蓋），把 cuDNN 的 DLL 放到 GPU 環境裡：
-> `<gpu-venv>/Lib/site-packages/cudnn/`。
-
-### 一個值得記住的坑
-
-`cudnn_conv_algo_search` **必須設在 provider 層選項裡**，寫成 `"DEFAULT"` 會讓 PP-OCRv6-rec 的 228 個卷積集體退回 CPU 實作，單次推論從 5.9ms 劣化到 90.2ms（15 倍）。且 provider 層設定**優先級高於** SessionOptions，寫錯地方會被靜默覆蓋。本專案已在 `build_providers()` 裡固定為 `"EXHAUSTIVE"`。
+專案也會自動在專案根目錄、虛擬環境的 `site-packages/cudnn/` 等常見位置尋找。仍無法啟用時的排查見 [Q&A.md](Q&A.md#gpu-未生效)。
 
 ## 取得權重
 
@@ -136,25 +65,17 @@ set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin
 
 ```bash
 python -m noocr models                     # 查看各後端狀態
-python -m noocr models --get ppocrv6-tiny  # 6.9MB，最快
-python -m noocr models --get ppocrv6-small # 32MB，預設
-python -m noocr models --get ppocrv5       # 22MB，上一代
+python -m noocr models --get ppocrv6-tiny  # 6.1MB，最快
+python -m noocr models --get ppocrv6-small # 30.5MB，預設
+python -m noocr models --get ppocrv5       # 15.6MB
 ```
 
-也可SDK 一次性拉全部：
+或一次拉全部：
 
 ```bash
 pip install modelscope
 modelscope download --model iterhui/noocr-onnx --local_dir ./models
 ```
-
-或直接下載單一檔案（路徑與下表一致）：
-
-```
-https://www.modelscope.cn/models/iterhui/noocr-onnx/resolve/master/ppocrv6/det/PP-OCRv6_det_small.onnx
-```
-
-### 放置位置
 
 下載後目錄結構必須如下（`models.py` 依此路徑解析）：
 
@@ -170,7 +91,7 @@ https://www.modelscope.cn/models/iterhui/noocr-onnx/resolve/master/ppocrv6/det/P
    │  │  ├─ PP-OCRv6_rec_tiny.onnx
    │  │  └─ PP-OCRv6_rec_small.onnx
    │  ├─ cls/
-   │  │  └─ cls.onnx                    # 方向分類器（180° 修正）
+   │  │  └─ cls.onnx                    # 方向分類器（180° 糾正）
    │  ├─ ppocrv6_tiny_dict.txt          # tiny 字典（6906 類）
    │  └─ ppocrv6_dict.txt               # small 字典（18710 類）
    └─ ppocrv5/
@@ -189,14 +110,7 @@ models/layout/{layout_cdla.onnx, layout_publaynet.onnx}
 models/table/slanet-plus.onnx
 ```
 
-手動放置時，缺哪個檔案 `python -m noocr models` 會用 `缺失` 標出。
-
-想放到別處，設環境變數：
-
-```bash
-export NOOCR_MODELS_DIR=/data/ocr/models    # Linux/macOS
-set NOOCR_MODELS_DIR=D:\ocr\models          # Windows
-```
+手動放置時，缺哪個檔案 `python -m noocr models` 會用 `缺失` 標出。想放到別處，設 `NOOCR_MODELS_DIR`。
 
 ## 命令列
 
@@ -204,13 +118,13 @@ set NOOCR_MODELS_DIR=D:\ocr\models          # Windows
 noocr <檔案>                     # 印出文字
 noocr <檔案> -o out.json        # 結構化 JSON（含座標與信賴度）
 noocr 論文.pdf -o 論文.md -f md  # PDF 轉 Markdown
-noocr bench 考卷.jpg             # 分階段耗時剖析
+noocr bench 試卷.jpg             # 分階段耗時剖析
 noocr backends                   # 列出後端
 noocr models                     # 權重狀態
 noocr serve --port 8000          # Web 介面 + API
 ```
 
-常用選項：`-b/--backend` 選後端、`-f/--format` 選 `json|text|md`、`-d/--device` 選 `auto|cpu|cuda`、`--batch` 調整批次大小、`--no-cls` 關閉 180° 修正。
+常用選項：`-b/--backend` 選後端、`-f/--format` 選 `json|text|md`、`-d/--device` 選 `auto|cpu|cuda`、`--batch` 調批次大小、`--no-cls` 關閉 180° 糾正。
 
 ## 當作函式庫使用
 
@@ -241,34 +155,23 @@ for path in paths:
     print(pipe(path).text)
 ```
 
-也可以直接拿後端：
-
-```python
-from noocr.backends import get_backend
-
-backend = get_backend("ppocrv6-tiny", rec_batch_size=8, device="cuda")
-backend.load()
-page = backend.recognize_image(image)      # image 為 BGR ndarray
-print(page.debug["stage_ms"])              # 分階段耗時，方便定位慢在哪一步
-```
-
 ## Web 介面與 API
 
 ```bash
 noocr serve --host 0.0.0.0 --port 8000 --device cuda
 ```
 
-介面 `http://127.0.0.1:8000/` —— 拖入檔案即識別，文字 / Markdown / 圖文對照三檢視，圖文與明細雙欄連動。
-API 文件 `http://127.0.0.1:8000/docs`。
+介面 `http://127.0.0.1:8000/` —— 左側上傳與參數、右側圖文對照雙欄連動、下方辨識記錄與範例圖。頂欄裝置徽標可直接點擊切換 CPU / GPU，無需重啟。API 文件 `http://127.0.0.1:8000/docs`。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | `GET` | `/health` | 健康檢查 |
 | `GET` | `/api/backends` | 可用後端列表 |
 | `GET` | `/api/device` | 裝置偏好與**實際生效**的裝置 |
-| `POST` | `/api/ocr` | 上傳檔案識別（multipart） |
-| `POST` | `/api/ocr/path?path=...` | 識別伺服器本機路徑 |
-| `GET` | `/api/page/{doc_id}/{i}` | 取第 i 頁渲染圖（多頁翻頁用） |
+| `POST` | `/api/device` | 切換裝置（`auto`/`cpu`/`cuda`） |
+| `POST` | `/api/ocr` | 上傳檔案辨識（multipart） |
+| `POST` | `/api/ocr/path?path=...` | 辨識伺服器本機路徑 |
+| `GET` | `/api/page/{doc_id}/{i}` | 取第 i 頁算繪圖（多頁翻頁用） |
 | `POST` | `/api/warmup` | 預載入後端 |
 
 ```bash
@@ -288,44 +191,12 @@ RTX 4070 Ti SUPER + ppocrv6-small，同一批範例圖取中位數：
 | 身分證 | 11 | 13317 ms | **400 ms** | 33x |
 | 銀行網點 | 4 | 9414 ms | **249 ms** | 38x |
 
-GPU 側首次請求含約 2.4s 的模型載入與 CUDA kernel 編譯，之後穩定在 0.25-0.6s。
-
-重現方式：
+GPU 側首次請求含約 2.4s 的模型載入與 CUDA kernel 編譯，之後穩定在 0.25-0.6s。重現：
 
 ```bash
 python scripts/perf/bench_device.py cpu     # CPU 基線
 python scripts/perf/bench_device.py cuda    # GPU 基線
 ```
-
-其他工具：
-
-```bash
-python scripts/perf/bench_buckets.py cuda   # 分桶與串行呼叫次數
-python scripts/perf/ab_tiers.py cuda        # 檔位數 A/B（含輸出一致性校驗）
-python scripts/perf/ab_cudnn.py             # cuDNN 演算法搜尋 A/B
-python scripts/perf/ab_arena.py             # 記憶體 arena 策略 A/B
-python scripts/perf/prof_rec.py cuda        # ORT profiler 逐運算子耗時
-```
-
-### 記憶體 arena 與動態形狀
-
-ONNX Runtime 在 `dynamic_shape=True` 時會一併關閉記憶體 arena。對**寬度
-持續變化**的模型這是必須的（rec 的輸入寬度隨文字長度任意成長，硬開 arena
-會退化到秒級）；但對**形狀集合有限且離散**的模型來說就是白白浪費。
-
-PP-OCRv6 的 det 屬於後者：短邊恆為 736，長邊有上限且對齊到 32。
-5 張不同長寬比範例圖交錯 A/B、各 12 輪：
-
-| det 設定 | 中位耗時/張 |
-|---|---|
-| `dynamic_shape=True`（arena 關） | 233.3 ms |
-| `dynamic_shape=False`（arena 開） | **157.6 ms**（-32.4%） |
-
-兩組波動區間（A 227.7~239.2、B 149.8~168.5）完全不重疊，差異顯著。
-端到端從 1541 ms 降到 1430 ms。
-
-重現：`python scripts/perf/ab_arena.py`。當兩組波動區間重疊時，
-腳本會明確回報「差異不顯著」而不是硬下結論——本機負載高時就該是這句。
 
 ## 後端對比
 
@@ -349,8 +220,8 @@ noocr/
 ├─ backends/             OCR 後端
 │  ├─ ppocr.py             PP-OCRv5
 │  ├─ ppocrv6.py           PP-OCRv6
-│  ├─ postprocess.py       DB 檢測後處理
-│  └─ decode.pyCTC 解碼
+│  ├─ postprocess.py       DB 偵測後處理
+│  └─ decode.py            CTC 解碼
 ├─ inputs/loader.py      多格式輸入
 ├─ document/             文件結構化
 ├─ pipeline/             編排
@@ -362,43 +233,6 @@ scripts/
 ├─ publish_weights.py      權重發布腳本
 ├─ perf/                   效能基準與 A/B 腳本
 └─ models_repo_card.md     權重倉庫模型卡
-```
-
-## 常見問題
-
-**`git push` 報 `Permission to <倉庫> denied to <另一個使用者>`**
-
-部分 Git 發行版在**系統層級** `gitconfig` 裡設了
-`credential.helper = helper-selector`，它的優先權高於你的 `~/.gitconfig`，
-會回傳 Windows 憑證管理員裡存著的**另一個帳號**——於是明明設對了
-token仍被拒。
-
-在倉庫目錄內加一條倉庫層級設定即可覆蓋，不必改動全域設定：
-
-```bash
-git config --local credential.helper ""
-git config --local credential.helper store
-```
-
-先清空再寫入是關鍵：只寫第二條是追加而非取代，空項目負責壓掉上層。
-
-驗證實際讀到的是哪一組憑證（`password` 不會回顯）：
-
-```bash
-printf 'protocol=https\nhost=github.com\n\n' \
-  | git -c credential.helper= -c credential.helper=store credential fill
-```
-
-輸出裡的 `username` 不是倉庫擁有者，就代表憑證還沒生效。
-
-**Windows 主控台輸出中文報 `UnicodeEncodeError`**
-
-主控台預設編碼是 cp1252。專案已做三層防護（套件內 `logging_config`、
-各腳本的 `reconfigure`、CI 的 `PYTHONIOENCODING`）；若你是在自己的腳本裡
-遇到，執行前設定：
-
-```powershell
-$env:PYTHONIOENCODING="utf-8"
 ```
 
 ## 授權
