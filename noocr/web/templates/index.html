@@ -616,9 +616,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   position: relative; overflow: auto; min-height: 0;
   background: repeating-conic-gradient(var(--panel-2) 0% 25%, var(--panel) 0% 50%) 50% / 18px 18px;
 }
-.viewer { position: relative; display: block; transform-origin: 0 0; margin: 12px auto; }
-.viewer img { display: block; max-width: none; }
-.viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* viewer 的布局尺寸 = 缩放后尺寸（由 applyZoom 写入），
+   内部 img / canvas 恒为原始尺寸并各自 transform 缩放。
+   transform-origin 统一 0 0，保证两者缩放原点一致、框与图不错位。 */
+.viewer {
+  position: relative; display: block; margin: 8px auto;
+  overflow: hidden;
+}
+.viewer img {
+  display: block; max-width: none;
+  position: absolute; top: 0; left: 0; transform-origin: 0 0;
+}
+.viewer canvas {
+  position: absolute; top: 0; left: 0; pointer-events: none;
+  transform-origin: 0 0;
+}
 
 /* 明细：固定列宽 + 独立滚动。图区与明细区互不抢空间，
    点某行高亮时图上对应框的变化即刻可见。 */
@@ -1648,28 +1660,37 @@ function fitStage() {
   const st = $("stage"), img = $("vImg");
   const w = img.naturalWidth, h = img.naturalHeight;
   if (!w || !h) return;
-  /* -24 是给 viewer 的 12px 外边距留位；留 0 会让图正好贴边，
+  /* 16 是给 viewer 的 8px 外边距留位；留 0 会让图正好贴边，
      视觉上像被切了一刀。 */
-  const k = Math.min((st.clientWidth - 24) / w, (st.clientHeight - 24) / h);
+  const k = Math.min((st.clientWidth - 16) / w, (st.clientHeight - 16) / h);
   zoom = Math.min(3, Math.max(0.05, k));
   applyZoom();
 }
-/* 缩放用 transform: scale 而非改 width/height。
-   改尺寸会触发重排 + 重新栅格化，放大后图像会糊；transform 走合成层，
-   位图只栅格化一次，放大到 4x 依然清晰。 */
+/* 缩放的正确做法：**布局尺寸直接等于缩放后的尺寸**，
+   内部再用一个固定原始尺寸的盒子做 transform。
+   上一版把 viewer 布局尺寸设成原图尺寸、只靠 transform 缩放，
+   滚动容器仍按原图算可滚动区域——于是图片只显示左上角一块、
+   还冒出滚动条，缩放结果与可见区域完全对不上。
+   现在 viewer 盒子= 缩放后尺寸，stage 的滚动范围与视觉一致。 */
 function applyZoom() {
   const img = $("vImg"), v = $("viewer");
-  /* viewer 的布局尺寸保持为原始尺寸，靠 transform 视觉缩放，
-     这样.stage 的滚动区域始终与视觉大小一致 */
-  v.style.width = img.naturalWidth + "px";
-  v.style.height = img.naturalHeight + "px";
-  img.style.width = img.naturalWidth + "px";
-  img.style.height = img.naturalHeight + "px";
-  v.style.transform = `scale(${zoom})`;
-  /* transform 不改变布局盒子，滚动容器需要显式补偿占位。
-     负 margin 让放大的图能以舞台中心对齐，而不是一律靠左上角。 */
-  v.style.marginLeft = (img.naturalWidth * zoom - img.naturalWidth) / 2 + "px";
-  v.style.marginTop = (img.naturalHeight * zoom - img.naturalHeight) / 2 + "px";
+  const w = img.naturalWidth, h = img.naturalHeight;
+  if (!w || !h) return;
+  /* 外层：布局尺寸 = 缩放后尺寸，决定滚动区域与居中 */
+  v.style.width = Math.round(w * zoom) + "px";
+  v.style.height = Math.round(h * zoom) + "px";
+  v.style.marginLeft = "";
+  v.style.marginTop = "";
+  /* 内层：恒定原始尺寸 + transform 缩放。
+     位图只栅格化一次，放大到 3x 依然清晰（改 width/height 会重新
+     栅格化并触发重排，放大后发糊）。 */
+  img.style.width = w + "px";
+  img.style.height = h + "px";
+  img.style.transform = `scale(${zoom})`;
+  const cv = $("vCv");
+  cv.style.width = w + "px";
+  cv.style.height = h + "px";
+  cv.style.transform = `scale(${zoom})`;
   draw();
 }
 /* 舞台尺寸变化（窗口缩放、切页、明细表出现）都要重新适配，
