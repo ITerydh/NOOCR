@@ -71,6 +71,46 @@ header .spacer { margin-left: auto; }
 }
 .pill.dev.cpu { color: var(--text-mute); }
 .pill.dev.err { color: #ef4444; border-color: #ef4444; }
+.pill.dev { cursor: pointer; user-select: none; transition: border-color .15s ease; }
+.pill.dev:hover { border-color: var(--accent); color: var(--accent); }
+.pill.dev.busy { opacity: .55; pointer-events: none; }
+.pill.dev .caret { font-size: 9px; opacity: .6; margin-left: 1px; }
+
+/* 设备下拉：挂在徽标下方，点击外部关闭 */
+.devwrap { position: relative; display: flex; }
+.devpop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  min-width: 232px; padding: 5px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+}
+.devpop button {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 8px 10px; font-size: 12.5px; text-align: left;
+  border: none; border-radius: 7px; background: transparent;
+  color: var(--text); cursor: pointer; font-family: inherit;
+}
+.devpop button:hover { background: var(--panel-2); }
+.devpop button:disabled { opacity: .38; cursor: not-allowed; }
+.devpop button.on { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.devpop button .tag {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  min-width: 34px; color: var(--text);
+}
+.devpop button.on .tag { color: var(--accent); }
+.devpop button .hint {
+  margin-left: auto; font-size: 10.5px; color: var(--text-mute);
+  font-family: var(--mono); text-align: right;
+}
+.devpop button .why {
+  display: block; font-size: 10.5px; color: var(--warn);
+  margin-top: 2px; line-height: 1.45; white-space: normal;
+}
+.devpop .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+.devpop .hd {
+  padding: 5px 10px 4px; font-size: 10.5px; color: var(--text-mute);
+  letter-spacing: .4px;
+}
 
 /* ---------- 布局 ---------- */
 .wrap { max-width: 1560px; margin: 0 auto; padding: 20px 24px 40px; }
@@ -322,7 +362,13 @@ td.n { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); wid
 <header>
   <div class="logo"><b>NOOCR</b><span id="ver">·</span></div>
   <div class="spacer"></div>
-  <div class="pill dev" id="devPill" title="推理设备"><span id="devName">·</span></div>
+  <div class="devwrap">
+    <div class="pill dev" id="devPill" title="点击切换推理设备" role="button" tabindex="0"
+         aria-haspopup="true" aria-expanded="false">
+      <span id="devName">·</span><span class="caret">▾</span>
+    </div>
+    <div class="devpop hide" id="devPop"></div>
+  </div>
   <div class="pill"><span class="dot" id="dot"></span><span id="status">连接中</span></div>
 </header>
 
@@ -494,17 +540,117 @@ async function boot() {
   buildSamples();
 }
 
-/* 设备徽标：显示实际生效的设备，而非请求值。
-   请求 cuda 却跑在 CPU 上是最容易被忽略的性能陷阱，必须让用户看见。 */
+/* ---------- 设备切换 ---------- */
+
+/* 设备选项。hint 是给人看的代价说明，why 在不可用时说明原因。 */
+const DEVICES = [
+  { id: "auto", tag: "AUTO", name: "自动", hint: "有GPU 就用" },
+  { id: "cuda", tag: "GPU", name: "显卡", hint: "最快" },
+  { id: "cpu", tag: "CPU", name: "处理器", hint: "兼容性最好" },
+];
+
+/* 最近一次探测结果，下拉里要用来判断某项是否可选 */
+let devInfo = null;
+
+/* 设备徽标：显示**实际生效**的设备，而非请求值。
+   请求cuda 却跑在 CPU 上是最容易被忽略的性能陷阱，必须让用户看见。 */
 function showDevice(d) {
+  devInfo = d;
   const pill = $("devPill");
-  const isErr = /失败/.test(d.label || "");
+  const isErr = !d.usable;
   pill.className = "pill dev " + (isErr ? "err" : d.gpu_active ? "gpu" : "cpu");
   const short = d.kind === "cuda" ? "GPU" : d.kind === "cpu" ? "CPU" : (d.kind || "·");
   const name = d.name && d.name !== "unknown" ? esc(d.name) : "";
   $("devName").textContent = short + (name ? " · " + name : "");
-  pill.title = `请求 ${d.prefer}｜实际 ${d.label || short}`;
+  pill.title = `当前偏好 ${d.prefer}｜实际 ${d.label || short}（点击切换）`;
 }
+
+function toggleDevPop(force) {
+  const pop = $("devPop");
+  const open = force !== undefined ? force : pop.classList.contains("hide");
+  if (open) renderDevPop();
+  pop.classList.toggle("hide", !open);
+  $("devPill").setAttribute("aria-expanded", String(open));
+}
+
+/* 渲染下拉。某项 disabled 表示后端判定该设备不可用，
+   并把原因写出来——让用户知道是「没显卡」还是「缺 cuDNN」。 */
+function renderDevPop() {
+  const cur = devInfo ? devInfo.prefer : "auto";
+  const gpuOk = !devInfo || devInfo.gpu_available !== false;
+  $("devPop").innerHTML =
+    `<div class="hd">推理设备</div>` +
+    DEVICES.map(d => {
+      const blocked = d.id === "cuda" && !gpuOk;
+      /* 当前项本身失败时优先展示它的原因，它比「显卡不可用」更具体 */
+      const why = (devInfo && !devInfo.usable && d.id === cur) ? devInfo.reason
+        : blocked ? "本机无可用 GPU 环境（缺 onnxruntime-gpu 或 CUDA/cuDNN）" : "";
+      const dis = blocked && d.id !== cur ? " disabled" : "";
+      return `<button data-dev="${d.id}"${d.id === cur ? ' class="on"' : ""}${dis}>
+        <span class="tag">${d.tag}</span><span>${d.name}</span>
+        <span class="hint">${blocked ? "不可用" : d.hint}</span>${why ? `<span class="why">${esc(why)}</span>` : ""}
+      </button>`;
+    }).join("") +
+    (devInfo ? `<div class="sep"></div>
+      <div class="hd" style="letter-spacing:0">实际：${esc(devInfo.label || devInfo.kind || "—")}</div>` : "");
+}
+
+/* 切换设备。GPU 首次加载要编译 CUDA kernel，约 2-3s，故显示忙态。 */
+async function setDevice(id) {
+  const pill = $("devPill");
+  if (pill.classList.contains("busy")) return;
+  pill.classList.add("busy");
+  $("status").textContent = "切换设备中";
+  try {
+    const fd = new FormData();
+    fd.append("device", id);
+    const r = await fetch("/api/device", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) {
+      note("切换失败：" + (d.detail || d.reason || "未知错误"), "err");
+      await refreshDevice();
+      return;
+    }
+    showDevice(d);
+    const w = d.warmup && Object.values(d.warmup)[0];
+    if (w && w !== "ok") {
+      note("设备已切换，但模型加载失败：" + w, "err");
+    } else {
+      const s = d.gpu_active ? "GPU" : "CPU";
+      note(`已切换到 ${s}${d.name && d.name !== "unknown" ? " · " + d.name : ""}`, "warn");
+    }
+    // 已切换则用当前后端重跑，让用户立刻看到差异
+    if (result) run();
+  } catch (e) {
+    note("切换失败：" + e.message, "err");
+  } finally {
+    pill.classList.remove("busy");
+    $("status").textContent = "服务正常";
+    toggleDevPop(false);
+  }
+}
+
+async function refreshDevice() {
+  try {
+    showDevice(await fetch("/api/device").then(r => r.json()));
+  } catch { /* 服务已断开，保持旧显示 */ }
+}
+
+$("devPill").onclick = () => toggleDevPop();
+$("devPill").onkeydown = e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDevPop(); }
+};
+$("devPop").onclick = e => {
+  const b = e.target.closest("button[data-dev]");
+  if (b) setDevice(b.dataset.dev);
+};
+/* 点击外部关闭下拉；Esc 也关*/
+document.addEventListener("click", e => {
+  if (!e.target.closest(".devwrap")) toggleDevPop(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") toggleDevPop(false);
+});
 
 function buildSamples() {
   const box = $("samples");
@@ -632,8 +778,12 @@ function apply(d) {
   const st = (pages[0] && pages[0].stages) || null;
   const det = st ? ((st.det_preprocess || 0) + (st.det_infer || 0) +
     (st.det_postprocess || 0)) : 0;
+  /* 后端回传的是形如 "cuda:0 (NVIDIA ... 17.2GB)" 的完整串，
+     统计条只放得下短标签，故按前缀归类。 */
+  const dv = (pages[0] && pages[0].device) || "";
+  const devTag = /^cuda|^(dml|cann|directml)/i.test(dv) ? "GPU" : dv ? "CPU" : "·";
   const cells = [
-    ["后端", d.backend], ["设备", st && st.device ? st.device : "·"],
+    ["后端", d.backend], ["设备", devTag, devTag === "GPU"],
     ["页数", d.page_count], ["文本行", all.length],
     ["平均置信", (avg * 100).toFixed(1) + "%", true], ["耗时", d.total_time + "s"],
   ];

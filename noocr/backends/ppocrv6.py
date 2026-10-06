@@ -38,7 +38,7 @@ import numpy as np
 
 from ..engine.base import BackendUnavailable, OCRBackend
 from ..engine.imageops import crop_quad, normalize_db, sort_reading_order, to_bgr
-from ..engine.session import detect_device, get_global_cache
+from ..engine.session import Device, detect_device, get_global_cache
 from ..models import model_path
 from ..types import BackendCapabilities, BoundingBox, PageResult, TextLine
 from .decode import CTCDecoder
@@ -132,6 +132,10 @@ class PPOCRv6Backend(OCRBackend):
         super().__init__(f"ppocrv6-{tier}", model_dir)
         self.tier = tier
         self.device_pref = device
+        #: :meth:`load` 解析出的**真实**设备。与 ``device_pref`` 区分：
+        #: ``auto`` 在无 CUDA 的机器上会落到 CPU，只回显偏好会让用户
+        #: 以为自己在用显卡。
+        self._resolved_device: Optional[Device] = None
         self.rec_batch_size = max(1, rec_batch_size)
         self.rec_img_h = rec_img_h
         self.drop_score = drop_score
@@ -176,6 +180,7 @@ class PPOCRv6Backend(OCRBackend):
                 )
 
         dev = detect_device(self.device_pref)
+        self._resolved_device = dev
         cache = get_global_cache()
 
         self._det_session = cache.get_or_create(
@@ -256,7 +261,7 @@ class PPOCRv6Backend(OCRBackend):
         }
         if not det_boxes:
             page.processing_time = time.perf_counter() - t0
-            page.debug = {"stage_ms": stage, "device": str(self.device_pref)}
+            page.debug = {"stage_ms": stage, "device": str(self._resolved_device or self.device_pref)}
             return page
 
         # --- 排序 + 裁剪 ---
@@ -294,7 +299,7 @@ class PPOCRv6Backend(OCRBackend):
         page.lines = lines
         page.text = "\n".join(ln.text for ln in lines)
         page.processing_time = time.perf_counter() - t0
-        page.debug = {"stage_ms": stage, "device": str(self.device_pref)}
+        page.debug = {"stage_ms": stage, "device": str(self._resolved_device or self.device_pref)}
         return page
 
     # ---------------------------------------------------------------- 内部

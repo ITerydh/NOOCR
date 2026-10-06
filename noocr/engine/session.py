@@ -583,6 +583,27 @@ class SessionCache:
             self._store.clear()
             log.debug("session 缓存已清空")
 
+    def evict_device(self, keep: str) -> int:
+        """驱逐**除** ``keep`` 设备之外的全部 session，返回驱逐数量。
+
+        后端切换设备时必须调用：:meth:`unload` 只是断开后端到 session 的
+        引用，session 本身仍被本缓存持有，CUDA 显存不会归还。实测切到
+        CPU 后显存常年占着 3.2GB，就是因为这一层没清。
+
+        Args:
+            keep: 保留的设备 kind（``"cpu"`` / ``"cuda"`` 等）。``"*"``
+                表示全部驱逐。
+        """
+        with self._lock:
+            stale = list(self._store) if keep == "*" else [
+                k for k in self._store if not k[1].startswith(f"{keep}:")
+            ]
+            for key in stale:
+                self._store.pop(key, None)
+        if stale:
+            log.info("已驱逐 {} 个 {} session", len(stale), "全部" if keep == "*" else keep)
+        return len(stale)
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._store)

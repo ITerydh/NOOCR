@@ -47,7 +47,7 @@ pip install "noocr[gpu]"    # NVIDIA GPU 加速
 
 ## GPU 加速
 
-GPU 上端到端比CPU 快 **20-40 倍**（见下方[性能](#性能)）。
+GPU 上端到端比 CPU 快 **20-40 倍**（见下方[性能](#性能)）。
 
 ```bash
 pip install "noocr[gpu]"          # 装 onnxruntime-gpu
@@ -55,11 +55,27 @@ python -m noocr 发票.jpg -d cuda
 python -m noocr serve --device cuda
 ```
 
-`--device` 可选`auto`（默认，有CUDA 就用）/ `cpu` / `cuda`。
+`--device` 可选 `auto`（默认，有 CUDA 就用）/ `cpu` / `cuda`。
+
+### Web 界面里随时切换
+
+`serve` 启动后，**顶栏设备徽标可直接点击切换**，无需重启服务：
+
+- 徽标显示的是**实际生效**的设备（GPU 生效时显示显卡名并变绿），不是启动时的请求值；
+- 下拉里 `自动 / 显卡 / 处理器` 三项，本机无 GPU 环境时「显卡」会置灰并写明原因；
+- 切换时自动卸载另一套模型并归还显存，代价约 0.4-0.6s；切换后若已有识别结果会自动重跑，方便直接对比速度；
+- 目标设备不可用时返回 400 并**保持原设备不变**，不会把能跑的服务弄成不能跑。
+
+也可以走API：
+
+```bash
+curl http://127.0.0.1:8000/api/device                       # 当前设备
+curl -X POST -F "device=cuda" .../api/device              # 切到GPU
+```
 
 ### cuDNN 9 是必需的
 
-ONNX Runtime 1.20+ 的 CUDA EP 依赖 **cuDNN 9**（`cudnn64_9.dll`）。装错版本的表现非常隐蔽：ORT **不报错**，只是把算子悄悄交给 CPU，你会得到纯CPU 的性能却以为在用显卡。
+ONNX Runtime 1.20+ 的 CUDA EP 依赖 **cuDNN 9**（`cudnn64_9.dll`）。装错版本的表现非常隐蔽：ORT **不报错**，只是把算子悄悄交给 CPU，你会得到纯 CPU 的性能却以为在用显卡。
 
 本项目对此做了三重防护：
 
@@ -77,12 +93,12 @@ set NOOCR_GPU_LIB_DIR=D:\libs\cudnn9\bin
 
 项目会自动在项目根、`noocr-gpu/` 等同级虚拟环境的 `site-packages/cudnn/` 下寻找，无需手动设置。
 
-> **若GPU 环境与 CPU 环境分开建**（推荐，避免 ORT 的 DLL 互相覆盖），把 cuDNN 的 DLL 放到 GPU 环境里：
+> **若 GPU 环境与 CPU 环境分开建**（推荐，避免 ORT 的 DLL 互相覆盖），把 cuDNN 的 DLL 放到 GPU 环境里：
 > `<gpu-venv>/Lib/site-packages/cudnn/`。
 
 ### 一个值得记住的坑
 
-`cudnn_conv_algo_search` **必须设在 provider 级选项里**，写成 `"DEFAULT"` 会让 PP-OCRv6-rec 的 228 个卷积集体退回 CPU 实现，单次推理从 5.9ms 劣化到 90.2ms（15倍）。且provider 级配置**优先级高于** SessionOptions，写错地方会被静默覆盖。本项目已在 `build_providers()` 里固定为 `"EXHAUSTIVE"`。
+`cudnn_conv_algo_search` **必须设在 provider 级选项里**，写成 `"DEFAULT"` 会让 PP-OCRv6-rec 的 228 个卷积集体退回 CPU 实现，单次推理从 5.9ms 劣化到 90.2ms（15倍）。且 provider 级配置**优先级高于** SessionOptions，写错地方会被静默覆盖。本项目已在 `build_providers()` 里固定为 `"EXHAUSTIVE"`。
 
 ## 获取权重
 

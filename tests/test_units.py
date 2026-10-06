@@ -14,6 +14,7 @@ for _stream in (sys.stdout, sys.stderr):
 import numpy as np
 
 import noocr.engine.imageops as iops
+from noocr.engine.session import SessionCache
 
 FAILED = []
 
@@ -161,6 +162,24 @@ check("空输入安全", b._assign_width_buckets([]) == [])
 print("\n=== 已移除的方法不应残留 ===")
 check("_safe_batch_size 已删除", not hasattr(b, "_safe_batch_size"))
 check("_bucket_by_width 已删除", not hasattr(b, "_bucket_by_width"))
+
+print("\n=== SessionCache.evict_device（设备切换须归还显存）===")
+cache = SessionCache(max_size=8)
+# 伪造三个 session：CPU 固定、CPU 动态、GPU 动态。键与 get_or_create 一致
+cache._store[("m/det.onnx", "cpu:fix")] = "cpu-det"
+cache._store[("m/rec.onnx", "cpu:dyn")] = "cpu-rec"
+cache._store[("m/det.onnx", "cuda:dyn")] = "gpu-det"
+check("初始三个", len(cache) == 3, f"实际 {len(cache)}")
+# 语义是「驱逐除keep 之外的全部」，切到 GPU 时 keep="cuda"
+check("切GPU 驱逐两个 CPU", cache.evict_device("cuda") == 2 and len(cache) == 1)
+check("保留的是 GPU 那个", cache._store.get(("m/det.onnx", "cuda:dyn")) == "gpu-det")
+check("重复切同一设备不再驱逐", cache.evict_device("cuda") == 0 and len(cache) == 1)
+# 切回 CPU：此时 GPU session 必须被驱逐，否则显存不归还
+check("切 CPU 驱逐 GPU", cache.evict_device("cpu") == 1 and len(cache) == 0)
+check("空缓存安全", cache.evict_device("cpu") == 0)
+cache._store[("m/a.onnx", "cpu:fix")] = 1
+cache._store[("m/b.onnx", "cuda:fix")] = 2
+check("通配符全清", cache.evict_device("*") == 2 and len(cache) == 0)
 
 print("\n" + "=" * 50)
 print(f"失败 {len(FAILED)} 项" + (f": {FAILED}" if FAILED else "，全部通过"))

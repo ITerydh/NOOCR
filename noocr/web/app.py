@@ -14,7 +14,7 @@ import traceback
 import uuid
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -39,30 +39,124 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 _SAMPLE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".pdf"}
 
 
+def _probe_device(prefer: str) -> Dict[str, Any]:
+    """探测设备偏好对应的实际设备，返回给前端展示的结构。
+
+    单独抽成函数是为了让 :class:`BackendPool` 与 API 端点共用同一套
+    判定逻辑，避免两处对「设备可用」的定义不一致。
+    """
+    from ..engine.session import detect_device
+
+    info: Dict[str, Any] = {
+        "prefer": prefer,
+        "options": ["auto", "cpu", "cuda"],
+        "usable": True,
+        "reason": "",
+    }
+    try:
+        dev = detect_device(prefer)
+    except Exception as e:
+        info.update({"kind": "cpu", "label": f"探测失败: {e}",
+                     "gpu_active": False, "usable": False, "reason": str(e)})
+        return info
+
+    info.update({"kind": dev.kind, "name": dev.name, "label": str(dev),
+                 "gpu_active": dev.is_gpu})
+
+    # CUDA 可用性单独探一次，让前端能把「显卡」这一项直接置灰，
+    # 而不是等用户点了才弹错误。探测结果有缓存，额外开销极小。
+    if prefer == "cuda":
+        info["gpu_available"] = dev.is_gpu
+    else:
+        try:
+            info["gpu_available"] = detect_device("cuda").is_gpu
+        except Exception:
+            info["gpu_available"] = False
+
+    # 请求了具体的 GPU 却拿到 CPU，说明环境不具备条件——必须算作不可用，
+    # 否则用户会看到一个「已切换成功」但实际跑 CPU 的界面。
+    if prefer in ("cuda", "dml", "cann") and not dev.is_gpu:
+        info["usable"] = False
+        info["reason"] = (
+            f"本机未检测到可用的 {prefer.upper()} 运行环境"
+            "（缺 onnxruntime-gpu 或 CUDA/cuDNN 运行库）"
+        )
+    return info
+
+
 class BackendPool:
     """按需加载并复用后端实例，模型只常驻一份。
 
-    设备（CPU/CUDA）也是实例键的一部分：同一个后端在两种设备上
-    是两套独立的 ONNX session，混用会导致「传了 GPU 却拿到 CPU 模型」。
+    设备（CPU/CUDA）是实例键的一部分：同一个后端在两种设备上是两套
+    独立的 ONNX session，只按后端名做键会让「刚切到 GPU 却拿到 CPU
+    模型」。
+
+    切换设备时**释放**另一套实例，否则两种设备的模型会同时占着显存。
+    重建代价约 0.2s（CPU）到 2.4s（GPU，含 CUDA kernel 编译），换来的是
+    显存不被闲置实例占死。
+
+    .. important::
+       释放要连 ``SessionCache`` 一起做。后端 :meth:`unload` 只断开自己到
+       session 的引用，全局缓存仍持有 session 对象，CUDA 显存不归还。
     """
 
     def __init__(self, device: str = "auto") -> None:
         self._lock = threading.Lock()
         self._device = device or "auto"
-        self._instances: Dict[str, Any] = {}
+        self._instances: Dict[Tuple[str, str], Any] = {}
 
     @property
     def device(self) -> str:
         """当前绑定的设备偏好。"""
         return self._device
 
+    def set_device(self, device: str) -> Dict[str, Any]:
+        """切换设备并返回新的探测结果。
+
+        Raises:
+            HTTPException: 目标设备不可用（如请求 cuda 但环境无 CUDA）。
+                此时**保持原设备不变**，避免把能跑的服务弄成不能跑。
+        """
+        target = device or "auto"
+        info = _probe_device(target)
+        if target != "auto" and not info.get("usable"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"设备 {target} 不可用：{info.get('reason') or info.get('label')}",
+            )
+
+        with self._lock:
+            if target == self._device:
+                return info
+            # 先卸载旧设备的实例再换键，避免两套模型同时占显存
+            stale = [k for k in self._instances if k[1] != target]
+            for name, _dev in stale:
+                try:
+                    self._instances.pop((name, _dev)).unload()
+                except Exception:
+                    log.exception("切换设备时卸载 {} 失败", name)
+            self._device = target
+            # unload 只断引用，session 仍在全局缓存里占着显存，必须显式驱逐。
+            # 保留的 kind 要用**解析后**的实际设备：auto 在无 GPU 机上落到 cpu，
+            # 按 "auto" 保留会把 CPU session 一起清掉，白白重载一遍。
+            keep = str(info.get("kind") or target)
+        try:
+            from ..engine.session import get_global_cache
+
+            get_global_cache().evict_device(keep)
+        except Exception:
+            log.exception("驱逐旧设备 session 失败")
+        log.info("设备已切换为 {}", target)
+        return info
+
     def get(self, name: str = DEFAULT_BACKEND) -> Any:
         with self._lock:
-            backend = self._instances.get(name)
+            key = (name, self._device)
+            backend = self._instances.get(key)
             if backend is None:
                 backend = get_backend(name, device=self._device)
                 backend.load()
-                self._instances[name] = backend
+                self._instances[key] = backend
             return backend
 
     def warm(self, names: Optional[List[str]] = None) -> Dict[str, str]:
@@ -85,6 +179,13 @@ class BackendPool:
                 except Exception:
                     log.exception("卸载后端失败")
             self._instances.clear()
+        # 同 set_device：必须清session 缓存，否则进程退出前显存不归还
+        try:
+            from ..engine.session import get_global_cache
+
+            get_global_cache().evict_device("*")
+        except Exception:
+            log.exception("清空 session 缓存失败")
 
 
 class DocCache:
@@ -162,6 +263,8 @@ def _result_payload(result: Any, boxes: bool) -> Dict[str, Any]:
                 "has_image": page.image is not None,
                 # 分阶段耗时，用于界面展示慢在哪一步
                 "stages": page.debug.get("stage_ms") if page.debug else None,
+                # 后端解析出的真实设备（auto 可能落到 CPU）
+                "device": page.debug.get("device") if page.debug else None,
             }
         )
     return {
@@ -214,29 +317,25 @@ def create_app(pool: Optional[BackendPool] = None, device: str = "auto") -> Fast
         return {
             "default": DEFAULT_BACKEND,
             "items": list_backends(),
-            "loaded": sorted(backend_pool._instances),
+            "loaded": sorted({n for n, _ in backend_pool._instances}),
         }
 
     @app.get("/api/device")
     def api_device() -> Dict[str, Any]:
         """返回设备偏好与实际生效的设备。
 
-        前端据此显示「正在用GPU / CPU」——GPU 被静默降级时用户必须看得见。
+        前端据此显示「正在用 GPU / CPU」——GPU 被静默降级时用户必须看得见。
         """
-        from ..engine.session import detect_device
+        return _probe_device(backend_pool.device)
 
-        prefer = backend_pool.device
-        info: Dict[str, Any] = {"prefer": prefer, "options": ["auto", "cpu", "cuda"]}
-        try:
-            dev = detect_device(prefer)
-            info["kind"] = dev.kind
-            info["name"] = dev.name
-            info["label"] = str(dev)
-            info["gpu_active"] = dev.is_gpu
-        except Exception as e:
-            info["kind"] = "cpu"
-            info["label"] = f"探测失败: {e}"
-            info["gpu_active"] = False
+    @app.post("/api/device")
+    def api_set_device(device: str = Form("auto")) -> Dict[str, Any]:
+        """切换推理设备，表单字段 ``device`` 取 ``auto`` / ``cpu`` / ``cuda``。
+
+        目标设备不可用时返回 400 且**保持原设备不变**，不会把能跑的服务弄坏。
+        """
+        info = backend_pool.set_device(device)
+        info["warmup"] = backend_pool.warm()
         return info
 
     # ---------------------------------------------------------------- 识别
