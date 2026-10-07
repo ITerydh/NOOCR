@@ -94,3 +94,9 @@ scripts/perf/onnxocr-env
 
 # 改版前端时留下的手工备份
 noocr/web/templates/*_bak.html
+
+# 检测脚本产出的临时截图（check_theme / check_device_popup / check_result_theme）
+# 不排除过一次：清理命令与 git add 写在同一条里，删除发生在暂存之后，
+# 结果这些图跟着进了仓库。检测脚本每次跑都会重新生成。
+.tmp_*.png
+.tmp_shots/
