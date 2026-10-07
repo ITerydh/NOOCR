@@ -48,6 +48,14 @@
   --v3-drop-bg:       linear-gradient(180deg, rgba(247,250,254,.92), rgba(250,252,255,.98));
   --v3-shadow:        0 8px 28px rgba(31, 56, 88, .065);
   --v3-shadow-hover:  0 12px 34px rgba(31, 56, 88, .105);
+  /* 浮层：设备下拉。独立于 --v3-panel——浮层要压住页面内容，
+     底色得比面板更实，否则下方的表格会透上来 */
+  --v3-pop-bg:        rgba(255, 255, 255, .97);
+  --v3-pop-border:    #d8e0eb;
+  --v3-pop-shadow:    0 18px 48px rgba(31, 56, 88, .16);
+  /* 悬停与选中：白底上用浅灰，深底上用微亮 */
+  --v3-hover:         rgba(31, 56, 88, .05);
+  --v3-sel-bg:        linear-gradient(90deg, rgba(57,127,246,.10), rgba(57,127,246,.04));
   --v3-radius:        14px;
   --v3-radius-sm:     9px;
 }
@@ -84,6 +92,11 @@
   --v3-drop-bg:       linear-gradient(180deg, rgba(26,33,45,.92), rgba(20,26,36,.98));
   --v3-shadow:        0 8px 28px rgba(0,0,0,.45);
   --v3-shadow-hover:  0 12px 34px rgba(0,0,0,.55);
+  --v3-pop-bg:        rgba(18, 25, 37, .97);
+  --v3-pop-border:    rgba(120, 151, 202, .28);
+  --v3-pop-shadow:    0 18px 48px rgba(0,0,0,.42);
+  --v3-hover:         rgba(255, 255, 255, .035);
+  --v3-sel-bg:        linear-gradient(90deg, rgba(84, 139, 235, .12), rgba(84, 139, 235, .045));
 }
 
 /* 跟随系统（未手动设置时生效）——与上面旧 token 的写法保持一致 */
@@ -120,6 +133,11 @@
     --v3-drop-bg:       linear-gradient(180deg, rgba(26,33,45,.92), rgba(20,26,36,.98));
     --v3-shadow:        0 8px 28px rgba(0,0,0,.45);
     --v3-shadow-hover:  0 12px 34px rgba(0,0,0,.55);
+    --v3-pop-bg:        rgba(18, 25, 37, .97);
+    --v3-pop-border:    rgba(120, 151, 202, .28);
+    --v3-pop-shadow:    0 18px 48px rgba(0,0,0,.42);
+    --v3-hover:         rgba(255, 255, 255, .035);
+    --v3-sel-bg:        linear-gradient(90deg, rgba(84, 139, 235, .12), rgba(84, 139, 235, .045));
   }
 }
 
@@ -385,36 +403,38 @@ button.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: -2
    显式声明只为让下拉的 top:100% 有确定的参照 */
 .devwrap { position: relative; display: flex; align-self: stretch; }
 /* 下拉挂在工具组内部，必须避让工具组自身的边框，
-   否则会与外框描边重叠、看起来像多了一条线 */
+   否则会与外框描边重叠、看起来像多了一条线。
+   配色用 --v3-*：这个弹层挂在 v3 样式的顶栏里，用旧 token 会
+   与顶栏的 --v3-header-bg 脱节，出现「顶栏浅色、弹层深色」。 */
 .devpop {
   position: absolute; top: calc(100% + 7px); right: 0; z-index: 40;
   min-width: 240px; max-width: 340px; padding: 5px; border-radius: 10px;
-  background: var(--panel); border: 1px solid var(--border-strong);
-  box-shadow: var(--sh-3);
+  background: var(--v3-pop-bg); border: 1px solid var(--v3-pop-border);
+  box-shadow: var(--v3-pop-shadow);
 }
 .devpop button {
   display: flex; align-items: baseline; gap: 8px; width: 100%;
   padding: 8px 10px; font-size: 12.5px; text-align: left;
   border: none; border-radius: 7px; background: transparent;
-  color: var(--text); cursor: pointer; font-family: inherit;
+  color: var(--v3-text); cursor: pointer; font-family: inherit;
 }
-.devpop button:hover { background: var(--panel-2); }
+.devpop button:hover { background: var(--v3-inset); }
 .devpop button:disabled { opacity: .38; cursor: not-allowed; }
-.devpop button.on { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.devpop button.on { background: color-mix(in srgb, var(--v3-primary) 15%, transparent); }
 .devpop button .tag {
   font-family: var(--mono); font-size: 11px; font-weight: 600;
-  min-width: 34px; color: var(--text);
+  min-width: 34px; color: var(--v3-text);
 }
-.devpop button.on .tag { color: var(--accent); }
+.devpop button.on .tag { color: var(--v3-primary); }
 .devpop button .hint {
-  margin-left: auto; font-size: 10.5px; color: var(--text-mute);
+  margin-left: auto; font-size: 10.5px; color: var(--v3-text-3);
   font-family: var(--mono); text-align: right;
 }
 .devpop button .why {
   display: block; font-size: 10.5px; color: var(--warn);
   margin-top: 2px; line-height: 1.45; white-space: normal;
 }
-.devpop .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+.devpop .sep { height: 1px; background: var(--v3-border); margin: 4px 6px; }
 /* 自动检测落到 CPU 时的原因说明。走提示色而非正文色：
    它是「需要用户做点什么」的信息，不是一句装饰性备注 */
 .devpop .note {
@@ -422,7 +442,7 @@ button.tool:focus-visible { outline: 2px solid var(--accent); outline-offset: -2
   line-height: 1.5; white-space: normal;
 }
 .devpop .hd {
-  padding: 5px 10px 4px; font-size: 10.5px; color: var(--text-mute);
+  padding: 5px 10px 4px; font-size: 10.5px; color: var(--v3-text-3);
   letter-spacing: .4px;
 }
 
@@ -1088,12 +1108,16 @@ header {
   background: rgba(112, 154, 235, .09);
 }
 
+/* 设备下拉的第二处定义：加毛玻璃与更深的投影。
+   配色走 --v3-* 而不是写死 rgba(18,25,37,.97)——那条硬编码不
+   分主题，浅色主题下弹出来是一块深色板，文字（--text 是浅色
+   主题的深灰）压上去几乎看不见。 */
 .devpop {
   margin-top: 1px;
   padding: 6px;
-  background: rgba(18, 25, 37, .97);
-  border-color: rgba(120, 151, 202, .28);
-  box-shadow: 0 18px 48px rgba(0,0,0,.42);
+  background: var(--v3-pop-bg);
+  border-color: var(--v3-pop-border);
+  box-shadow: var(--v3-pop-shadow);
   backdrop-filter: blur(18px);
 }
 
@@ -1479,34 +1503,37 @@ button:active:not(:disabled) {
 }
 
 .hist-item:hover {
-  background: rgba(255,255,255,.035);
+  background: var(--v3-hover);
 }
 
 .hist-item.on {
-  background: linear-gradient(90deg, rgba(84, 139, 235, .12), rgba(84, 139, 235, .045));
-  border-color: rgba(102, 153, 239, .22);
-  box-shadow: inset 2px 0 0 #5d96ee;
+  background: var(--v3-sel-bg);
+  border-color: var(--v3-primary-border);
+  box-shadow: inset 2px 0 0 var(--v3-primary);
 }
 
 .hist-item .nm {
-  color: #d1dbe8;
+  color: var(--v3-text);
 }
 
 .hist-item .meta {
-  color: #68778c;
+  color: var(--v3-text-2);
 }
 
-/* 文本/Markdown结果区 */
+/* 文本/Markdown 结果区。原先这几条写死了深色底与浅色字，
+   而浅色主题没有对应覆盖——识别完切到浅色，导出栏按钮会变成
+   一块深色板浮在白底上。统一走 v3 变量。 */
 .out {
   padding: 14px 16px;
   font-size: 12.5px;
   line-height: 1.75;
-  color: #cbd6e4;
+  color: var(--v3-text);
 }
 
 .out-bar button {
   min-height: 28px;
-  background: rgba(16, 23, 34, .88);
+  background: var(--v3-panel);
+  color: var(--v3-text-dim);
 }
 
 /* ---------- 右下：示例图 ---------- */

@@ -57,6 +57,13 @@ const SNAPSHOT = () => {
           ? s.backgroundColor : `image:${s.backgroundImage.slice(0, 40)}`; })(),
       detail: (() => { const e = document.querySelector(".detail");
         return e ? getComputedStyle(e).backgroundColor : "(无detail)"; })(),
+      // v3 段给这两处写死了深色 rgba(23,31,44,.96) / rgba(16,23,34,.88)，
+      // 浅色主题下要靠 [data-theme="light"] 那几条盖回来——盖没盖住
+      // 只有实测知道，扫描 CSS 里的硬编码色值查不出覆盖关系
+      detailTh: (() => { const e = document.querySelector(".detail thead th");
+        return e ? getComputedStyle(e).backgroundColor : "(无detail表头)"; })(),
+      outBarBtn: (() => { const e = document.querySelector(".out-bar button");
+        return e ? getComputedStyle(e).backgroundColor : "(无out-bar按钮)"; })(),
       hist: (() => { const e = document.querySelector(".hist");
         return e ? getComputedStyle(e).backgroundColor : "(无hist)"; })(),
       samples: (() => { const e = document.querySelector(".samples-wrap");
