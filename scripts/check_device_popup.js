@@ -2,9 +2,10 @@
 // 关注点：这个弹层曾被硬编码成深色 rgba(18,25,37,.97)，
 // 于是浅色主题下弹出来是一块深色板——变量全对，只有这一个元素没跟上。
 // 用法: node scripts/check_device_popup.js [base_url]
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium, P } = require("./_browser");
+const { chromium } = loadPlaywright();
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
+const EXE = findChromium();
 const BASE = process.argv[2] || "http://127.0.0.1:8940";
 
 /* 弹层里每一类文字都要单独取。只看容器背景会漏掉「容器对了但
@@ -65,9 +66,9 @@ const READ = () => {
     const s = await page.evaluate(READ);
     snaps.push({ theme, ...s });
     if (theme === "light") {
-      await page.screenshot({ path: "C:/Users/iterhui/Desktop/ocr/.tmp_devpop_light.png" });
+      await page.screenshot({ path: P(".tmp_devpop_light.png") });
     } else {
-      await page.screenshot({ path: "C:/Users/iterhui/Desktop/ocr/.tmp_devpop_dark.png" });
+      await page.screenshot({ path: P(".tmp_devpop_dark.png") });
     }
     // 收起，避免影响下一轮
     await page.$eval("#devPill", (el) => el.click());

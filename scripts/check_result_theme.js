@@ -3,11 +3,11 @@
 // 而 .out / .out-bar button / .hist-item 只有识别之后才进 DOM——
 // 上一轮漏掉的主题问题恰好全在这一类（写死深色但浅色没覆盖）。
 // 用法: node scripts/check_result_theme.js [base_url]
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium, STATIC, P } = require("./_browser");
+const { chromium } = loadPlaywright();
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
+const EXE = findChromium();
 const BASE = process.argv[2] || "http://127.0.0.1:8940";
-const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
 
 const READ = () => {
   const g = (sel, prop = "color") => {
@@ -80,7 +80,7 @@ function ratio(a, b) {
       () => /行/.test(document.querySelector("#stats")?.textContent || ""),
       null, { timeout: 180000 });
     await page.waitForTimeout(600);
-    await page.screenshot({ path: `C:/Users/iterhui/Desktop/ocr/.tmp_res_${theme}.png` });
+    await page.screenshot({ path: P(`.tmp_res_${theme}.png`) });
     snaps.push({ theme, ...(await page.evaluate(READ)) });
   }
 

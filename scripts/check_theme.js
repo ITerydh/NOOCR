@@ -5,11 +5,12 @@
 //   3. 切换后不残留上一种主题的硬编码颜色——常见漏法是有几条规则
 //      写死了 #fff / #000，浅色下就看不见了。
 // 用法: node scripts/check_theme.js [base_url] [out_dir]
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium, P } = require("./_browser");
+const { chromium } = loadPlaywright();
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
+const EXE = findChromium();
 const BASE = process.argv[2] || "http://127.0.0.1:8940";
-const OUT = process.argv[3] || "C:/Users/iterhui/Desktop/ocr/.tmp_theme";
+const OUT = process.argv[3] || P(".tmp_theme");
 
 /* 取一次快照：所有会被主题影响的计算值。
    一次性抓齐而不是分多次 evaluate，是为了让两个主题的取值走

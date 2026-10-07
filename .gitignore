@@ -100,3 +100,8 @@ noocr/web/templates/*_bak.html
 # 结果这些图跟着进了仓库。检测脚本每次跑都会重新生成。
 .tmp_*.png
 .tmp_shots/
+
+# 检测脚本的浏览器依赖。playwright-core 是开发期工具，不进
+# requirements，scripts/_browser.js 会按序尝试本地与NODE_PATH，
+# 找不到时给出安装指引而不是直接崩。
+node_modules/

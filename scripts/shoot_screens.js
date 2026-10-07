@@ -1,14 +1,14 @@
 // 生成 README 图例：驱动真实 WebUI 走完整流程后截图。
 // 用法: node scripts/shoot_screens.js [out_dir] [base_url]
 // 依赖 playwright-core；产出的 PNG 需再经 scripts/shrink_images.py 压缩
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium, STATIC, P } = require("./_browser");
+const { chromium } = loadPlaywright();
 const path = require("path");
 const fs = require("fs");
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
-const OUT = process.argv[2] || "C:/Users/iterhui/Desktop/ocr/docs/images";
-const BASE = process.argv[3] || "http://127.0.0.1:8820";
-const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
+const EXE = findChromium();
+const OUT = process.argv[2] || P("docs", "images");
+const BASE = process.argv[3] || "http://127.0.0.1:8940";
 
 // 用上传而非点示例图：走 setFile() 才会渲染上传缩略图，
 // 这是「上传 → 缩略图 → 识别 → 对照 → 明细联动」完整链路，

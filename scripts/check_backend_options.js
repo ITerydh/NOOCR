@@ -2,10 +2,13 @@
 // 用途：后端注册表加了新档位后，光看 /api/backends 返回值不够——
 // 还要确认页面上的 <select> 真的把它渲染出来了。
 // 用法: node scripts/check_backend_options.js [base_url]
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium } = require("./_browser");
+const { chromium } = loadPlaywright();
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
-const BASE = process.argv[2] || "http://127.0.0.1:8933";
+const EXE = findChromium();
+// 默认端口与 scripts/restart.py 里登记的一致（GPU 服务），
+// 原先写8933 是临时起的另一个实例，与文档脱节。
+const BASE = process.argv[2] || "http://127.0.0.1:8940";
 
 (async () => {
   const browser = await chromium.launch({ executablePath: EXE });

@@ -1,11 +1,11 @@
 // 跑一次真实识别，验证统计条与历史记录里的后端短标签。
 // 关注点：shortBackend 不再依赖硬编码映射，新增档位也能显示对。
 // 用法: node scripts/check_backend_label.js [base_url]
-const { chromium } = require("playwright-core");
+const { loadPlaywright, findChromium, STATIC, P } = require("./_browser");
+const { chromium } = loadPlaywright();
 
-const EXE = "C:/Users/iterhui/AppData/Local/ms-playwright/chromium-1129/chrome-win/chrome.exe";
-const BASE = process.argv[2] || "http://127.0.0.1:8934";
-const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
+const EXE = findChromium();
+const BASE = process.argv[2] || "http://127.0.0.1:8940";
 
 (async () => {
   const browser = await chromium.launch({ executablePath: EXE });
@@ -51,7 +51,7 @@ const STATIC = "C:/Users/iterhui/Desktop/ocr/noocr/web/static";
   console.log(`\n记录区: ${histText.slice(0, 150)}`);
 
   const bad = Object.entries(derived).filter(([, v]) => /^v\d/.test(v) === false);
-  await page.screenshot({ path: "C:/Users/iterhui/Desktop/ocr/.tmp_medium_webui.png", fullPage: false });
+  await page.screenshot({ path: P(".tmp_medium_webui.png"), fullPage: false });
   await browser.close();
 
   if (bad.length) {
