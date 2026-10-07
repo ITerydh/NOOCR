@@ -214,6 +214,24 @@ small 为 0.973），代价是耗时更长：8 张示例图实测 medium 2993ms�
 
 只有图片会在上传位置显示缩略图。PDF 与 Office 文件会在右侧显示首屏预览。
 
+### 改了前端代码但页面没变化
+
+**必须重启服务。** 模板与静态资源在服务启动时就读进内存了，热重载不覆盖它们——不重启的话浏览器拿到的还是旧页面，于是会误判「改动没生效」，甚至更糟：以为生效了，实际一直在测旧代码。
+
+```bash
+python scripts/restart.py --stop     # 停掉旧进程，确认端口空了
+
+# 两条命令都要起：GPU 那个测推理，CPU 那个是回退路径
+noocr-gpu/Scripts/python.exe -m noocr serve --port 8940
+noocr-env/Scripts/python.exe -m noocr serve --port 8812 --device cpu
+
+python scripts/restart.py --check    # 确认就绪
+```
+
+`--check` 会对每个端口探测 `/api/backends` 并报出后端数量。两个服务必须用**各自的解释器**：GPU 那个用错解释器会静默退回 CPU（ONNX Runtime 在 CUDA provider 初始化失败时不抛异常，只打一条 warning），而接口一样返回 200，从返回值上看不出设备变了。
+
+启动后请等 15-20 秒再探测：首次启动要付 CUDA kernel 编译与权重加载，太早探测会误判成启动失败。
+
 ---
 
 ## 性能调优
